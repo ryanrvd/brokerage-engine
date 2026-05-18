@@ -8,28 +8,64 @@ Nav is placed at the TOP of the page (horizontal tab bar) for maximum
 visibility — see position="top" below.
 """
 
+import hashlib
+
 import streamlit as st
 
 
 def _check_password() -> bool:
-    """Gate the app behind a shared password set in Streamlit Cloud secrets."""
-    import streamlit as st
+    """Gate the app behind a shared password.
 
-    def _password_entered():
-        if st.session_state.get("_password") == st.secrets.get("password"):
-            st.session_state["_password_correct"] = True
-            del st.session_state["_password"]
-        else:
-            st.session_state["_password_correct"] = False
+    Mobile Safari (and other mobile browsers) close + recreate the WebSocket
+    on every in-app navigation, so a session_state-only gate re-prompts on
+    every hyperlink click. We persist a SHA-256 hash of the password in a
+    cookie that survives navigation. Session_state is kept as a within-session
+    fallback while the cookie write round-trips through the browser.
+    """
+    from streamlit_cookies_controller import CookieController
 
+    cookie_name = "brokerage_engine_auth"
+    expected_hash = hashlib.sha256(
+        str(st.secrets.get("password", "")).encode("utf-8")
+    ).hexdigest()
+
+    # Belt: cookie survives full-page navigation between Streamlit pages.
+    cookies = CookieController(key="auth_cookies")
+    try:
+        auth_cookie = cookies.get(cookie_name)
+    except TypeError:
+        # CookieController's internal store is briefly None before the
+        # component mounts; treat as "no cookie yet" and fall through.
+        auth_cookie = None
+    if auth_cookie == expected_hash:
+        return True
+
+    # Braces: in-session memory while the cookie write round-trips client-side
+    # (CookieController's getAll is async on cold sessions and returns {} on
+    # the first script run).
     if st.session_state.get("_password_correct"):
         return True
 
     st.markdown("### Brokerage Engine")
     st.caption("Private preview · enter access password")
-    st.text_input("Password", type="password", on_change=_password_entered, key="_password")
-    if st.session_state.get("_password_correct") is False:
-        st.error("Incorrect password")
+    pw = st.text_input("Password", type="password", key="_password_input")
+
+    if pw:
+        if pw == st.secrets.get("password"):
+            st.session_state["_password_correct"] = True
+            # Cookie write is queued for the response flush; the
+            # subsequent st.rerun() lets the new render pick up the
+            # session_state flag immediately.
+            cookies.set(
+                cookie_name,
+                expected_hash,
+                max_age=86400,        # 24 hours
+                same_site="lax",       # required for in-app link clicks
+            )
+            st.rerun()
+        else:
+            st.error("Incorrect password")
+
     st.stop()
 
 
