@@ -10,6 +10,32 @@ visibility — see position="top" below.
 
 import streamlit as st
 
+
+def _check_password() -> bool:
+    """Gate the app behind a shared password set in Streamlit Cloud secrets."""
+    import streamlit as st
+
+    def _password_entered():
+        if st.session_state.get("_password") == st.secrets.get("password"):
+            st.session_state["_password_correct"] = True
+            del st.session_state["_password"]
+        else:
+            st.session_state["_password_correct"] = False
+
+    if st.session_state.get("_password_correct"):
+        return True
+
+    st.markdown("### Brokerage Engine")
+    st.caption("Private preview · enter access password")
+    st.text_input("Password", type="password", on_change=_password_entered, key="_password")
+    if st.session_state.get("_password_correct") is False:
+        st.error("Incorrect password")
+    st.stop()
+
+
+_check_password()
+
+
 # Pages — each is a Streamlit script file relative to this entry script.
 # Explicit url_path ensures stable routing so inline anchor hrefs always resolve.
 market_overview = st.Page("pages/0_Market_Overview.py", title="Market Overview", icon="📊", default=True, url_path="market_overview")
