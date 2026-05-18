@@ -332,7 +332,7 @@ with col_aside:
     def _club_link(url: str, label: str) -> str:
         if not url:
             return label
-        return f'<a href="{url}" target="_self" style="color:#1F3864; font-weight:600;">{label}</a>'
+        return f'<a href="{ui.with_auth(url)}" target="_self" style="color:#1F3864; font-weight:600;">{label}</a>'
 
     cc_line = f"<strong>Current:</strong> {_club_link(cc_url, current_club_display)}"
     if on_loan and parent_club_display and parent_club_display != current_club_display:
@@ -384,7 +384,7 @@ def _pv_tile(
     )
     if href:
         return (
-            f'<a href="{href}" target="_self" '
+            f'<a href="{ui.with_auth(href)}" target="_self" '
             f'style="text-decoration:none; color:inherit;">{tile_html}</a>'
         )
     return tile_html
@@ -680,7 +680,7 @@ if pd.notna(owning_pressure):
         f"<div style='font-weight:600;'>Owning club selling pressure: {owning_pressure:.0f} / 100</div>"
         f"<div style='font-size:0.9rem; color:#374151; margin-top:4px;'>"
         f"Top drivers: {drivers_text} · "
-        f"<a href='{parent_pressure_link}' target='_self'>open {parent_club_display} Club View →</a>"
+        f"<a href='{ui.with_auth(parent_pressure_link)}' target='_self'>open {parent_club_display} Club View →</a>"
         f"</div></div>",
         unsafe_allow_html=True,
     )
@@ -692,8 +692,8 @@ st.markdown("")
 if on_loan and parent_club_display and parent_club_display != current_club_display:
     loan_bonus = (fp_raw == 1)
     st.markdown("### Loan status")
-    cc_a = f'<a href="{cc_url}" target="_self" style="color:#1F3864; font-weight:600;">{current_club_display}</a>'
-    pc_a = f'<a href="{pc_url}" target="_self" style="color:#1F3864; font-weight:600;">{parent_club_display}</a>'
+    cc_a = f'<a href="{ui.with_auth(cc_url)}" target="_self" style="color:#1F3864; font-weight:600;">{current_club_display}</a>'
+    pc_a = f'<a href="{ui.with_auth(pc_url)}" target="_self" style="color:#1F3864; font-weight:600;">{parent_club_display}</a>'
     loan_end_str   = loan_end_date or "—"
     parent_end_str = parent_end_date or "—"
     st.markdown(

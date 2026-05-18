@@ -13,37 +13,36 @@ import hashlib
 import streamlit as st
 
 
-def _check_password() -> bool:
-    """Gate the app behind a shared password.
-
-    Mobile Safari (and other mobile browsers) close + recreate the WebSocket
-    on every in-app navigation, so a session_state-only gate re-prompts on
-    every hyperlink click. We persist a SHA-256 hash of the password in a
-    cookie that survives navigation. Session_state is kept as a within-session
-    fallback while the cookie write round-trips through the browser.
-    """
-    from streamlit_cookies_controller import CookieController
-
-    cookie_name = "brokerage_engine_auth"
-    expected_hash = hashlib.sha256(
+def _auth_hash() -> str:
+    """Truncated SHA-256 of the shared password — the token we carry in URLs."""
+    return hashlib.sha256(
         str(st.secrets.get("password", "")).encode("utf-8")
-    ).hexdigest()
+    ).hexdigest()[:32]
 
-    # Belt: cookie survives full-page navigation between Streamlit pages.
-    cookies = CookieController(key="auth_cookies")
-    try:
-        auth_cookie = cookies.get(cookie_name)
-    except TypeError:
-        # CookieController's internal store is briefly None before the
-        # component mounts; treat as "no cookie yet" and fall through.
-        auth_cookie = None
-    if auth_cookie == expected_hash:
+
+def _check_password() -> bool:
+    """Gate the app behind a shared password, persisted via ?_a=<hash> URL token.
+
+    Cookie-based persistence is structurally broken on iOS Safari (ITP treats
+    Streamlit's component iframes as third-party). The auth token rides in
+    the URL instead — every in-app link helper (player_link, club_link, etc.
+    in components.py) re-appends it so subsequent full-page navigations
+    carry it through. Tradeoff: token visible in URL bar — acceptable for
+    a demo gate (one-way hash, no PII).
+    """
+    expected = _auth_hash()
+
+    # Primary check: URL token from a previous auth
+    token = st.query_params.get("_a")
+    if token == expected:
+        st.session_state["_password_correct"] = True
         return True
 
-    # Braces: in-session memory while the cookie write round-trips client-side
-    # (CookieController's getAll is async on cold sessions and returns {} on
-    # the first script run).
+    # Within-session fallback (just-authed user pre-rerun, or token lost
+    # via a navigation that didn't preserve it). Re-inject the token so
+    # the URL bar stays consistent.
     if st.session_state.get("_password_correct"):
+        st.query_params["_a"] = expected
         return True
 
     st.markdown("### Brokerage Engine")
@@ -53,21 +52,7 @@ def _check_password() -> bool:
     if pw:
         if pw == st.secrets.get("password"):
             st.session_state["_password_correct"] = True
-            # iOS Safari drops same_site="lax" cookies set inside the
-            # streamlit-cookies-controller iframe between page navigations
-            # — same_site="none" + secure=True is required for the cookie
-            # to persist across in-app link clicks. The Secure attribute
-            # forbids HTTP, so on localhost dev we fall back to "lax"+False
-            # (gate works on first entry but won't survive navigation
-            # locally; acceptable since prod is the only target).
-            is_https = (st.context.url or "").startswith("https://")
-            cookies.set(
-                cookie_name,
-                expected_hash,
-                max_age=86400,
-                same_site="none" if is_https else "lax",
-                secure=is_https,
-            )
+            st.query_params["_a"] = expected
             st.rerun()
         else:
             st.error("Incorrect password")

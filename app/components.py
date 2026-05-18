@@ -354,14 +354,35 @@ def match_interest_name(
 
 # ─── Click-through URL builders ───────────────────────────────────────────────
 
+def _auth_param() -> str:
+    """Return '_a=<token>' for appending to in-app URLs, or '' if no auth.
+
+    Reads the auth token from the current request's query string. Every
+    in-app link must carry this through or the user lands on the password
+    gate after navigation (a fresh WebSocket session has no session_state).
+    """
+    token = st.query_params.get("_a")
+    return f"_a={token}" if token else ""
+
+
+def with_auth(href: str) -> str:
+    """Append the auth token to an in-app href. Idempotent — already-tagged
+    URLs are returned unchanged."""
+    auth = _auth_param()
+    if not auth or "_a=" in href:
+        return href
+    sep = "&" if "?" in href else "?"
+    return f"{href}{sep}{auth}"
+
+
 def player_url(player_id: int, name: str) -> str:
     """URL for navigating to the Player View. Display name appears after #
     so st.column_config.LinkColumn(display_text=r'#(.+)') can show it."""
-    return f"/player_view?player_id={player_id}#{name}"
+    return with_auth(f"/player_view?player_id={player_id}") + f"#{name}"
 
 
 def club_url(club_id: int, name: str) -> str:
-    return f"/club_view?club_id={club_id}#{name}"
+    return with_auth(f"/club_view?club_id={club_id}") + f"#{name}"
 
 
 # ─── Anchor-tag builders for per-cell hyperlinks (same-tab) ──────────────────
@@ -373,20 +394,16 @@ def player_link(player_id: int | None, label: str) -> str:
     """HTML anchor for a Player View drill-through. target=_self → same tab."""
     if player_id is None or pd.isna(player_id) or not label:
         return label or ""
-    return (
-        f'<a href="/player_view?player_id={int(player_id)}" '
-        f'target="_self" style="{_LINK_STYLE}">{label}</a>'
-    )
+    href = with_auth(f"/player_view?player_id={int(player_id)}")
+    return f'<a href="{href}" target="_self" style="{_LINK_STYLE}">{label}</a>'
 
 
 def club_link(club_id: int | None, label: str) -> str:
     """HTML anchor for a Club View drill-through. target=_self → same tab."""
     if club_id is None or pd.isna(club_id) or not label:
         return label or ""
-    return (
-        f'<a href="/club_view?club_id={int(club_id)}" '
-        f'target="_self" style="{_LINK_STYLE}">{label}</a>'
-    )
+    href = with_auth(f"/club_view?club_id={int(club_id)}")
+    return f'<a href="{href}" target="_self" style="{_LINK_STYLE}">{label}</a>'
 
 
 def render_html_table(
@@ -502,7 +519,7 @@ def render_html_table(
                 qs_parts.append(extra_qs)
             qs_parts.append(f"sort={target_key}")
             qs_parts.append(f"dir={new_dir}")
-            href = (sort_path or "") + "?" + "&".join(qs_parts)
+            href = with_auth((sort_path or "") + "?" + "&".join(qs_parts))
             anchor = (
                 f'<a href="{href}" target="_self" '
                 f'style="color:white;text-decoration:none;display:block;'
@@ -612,7 +629,7 @@ def render_global_search(players: list[dict], clubs: list[dict]) -> None:
         if player_hits:
             st.markdown("**Players**")
             for p in player_hits:
-                url = f"/player_view?player_id={p['player_id']}"
+                url = with_auth(f"/player_view?player_id={p['player_id']}")
                 st.markdown(
                     f'• <a href="{url}" target="_self" style="{link_style}">{p["display_name"]}</a>',
                     unsafe_allow_html=True,
@@ -620,7 +637,7 @@ def render_global_search(players: list[dict], clubs: list[dict]) -> None:
         if club_hits:
             st.markdown("**Clubs**")
             for c in club_hits:
-                url = f"/club_view?club_id={c['club_id']}"
+                url = with_auth(f"/club_view?club_id={c['club_id']}")
                 st.markdown(
                     f'• <a href="{url}" target="_self" style="{link_style}">{c["display_name"]}</a>',
                     unsafe_allow_html=True,
@@ -671,7 +688,7 @@ def render_nav_bar(active: str = "") -> None:
             else "color:#374151; font-weight:500;"
         )
         items_html.append(
-            f'<a href="{url}" target="_self" style="text-decoration:none; padding:0.5rem 0.75rem; {style}">'
+            f'<a href="{with_auth(url)}" target="_self" style="text-decoration:none; padding:0.5rem 0.75rem; {style}">'
             f'{icon} {label}</a>'
         )
     html = (

@@ -480,7 +480,7 @@ with col_pos:
                     "LW": "Left winger", "RW": "Right winger",
                     "ST_CF": "Striker"}.get(pos, pos)
         pos_rows.append(
-            f'<a href="/position_view?bucket={pos}" target="_self" '
+            f'<a href="{ui.with_auth(f"/position_view?bucket={pos}")}" target="_self" '
             f'style="text-decoration:none; color:inherit;">'
             f'<div style="background:#ffffff; border:1px solid {border}; '
             f'border-radius:6px; padding:10px 12px; cursor:pointer; '
@@ -533,7 +533,7 @@ with col_lg:
                 net, accent, border = "Balanced", "#15803d", "#bbf7d0"
         lg_display = labels.league_name(lg)
         lg_rows.append(
-            f'<a href="/league_view?league={lg}" target="_self" '
+            f'<a href="{ui.with_auth(f"/league_view?league={lg}")}" target="_self" '
             f'style="text-decoration:none; color:inherit;">'
             f'<div style="background:#ffffff; border:1px solid {border}; '
             f'border-radius:6px; padding:10px 12px; cursor:pointer; '

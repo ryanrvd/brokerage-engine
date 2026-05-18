@@ -996,7 +996,7 @@ else:
                             parts.append(
                                 f'<span style="white-space:nowrap;"{tooltip}>'
                                 f'{ui.level_fit_dot(lf)} '
-                                f'<a href="/player_view?player_id={pid}" target="_self" '
+                                f'<a href="{ui.with_auth(f"/player_view?player_id={pid}")}" target="_self" '
                                 f'style="color:#1F3864; font-weight:700; '
                                 f'text-decoration:none;">{pdisp}</a>'
                                 f'</span>'

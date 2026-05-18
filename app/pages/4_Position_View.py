@@ -265,7 +265,7 @@ if bucket is None:
         ratio_str = (f"{d['n_clubs'] / d['n_players']:.1f}× demand"
                      if d["n_players"] > 0 else "no supply")
         cards_html.append(
-            f'<a class="rvc-pos-card" href="/position_view?bucket={b}" target="_self">'
+            f'<a class="rvc-pos-card" href="{ui.with_auth(f"/position_view?bucket={b}")}" target="_self">'
             f'  <span class="rvc-pos-card-pill" style="background:{tier_colour};">'
             f'    ● {labels.display_bucket(b)}'
             f'  </span>'
