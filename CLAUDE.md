@@ -1,6 +1,6 @@
 # Yatin Matcher — project briefing
 
-A brokerage matcher commissioned by Yatin Patel, executed by RV Corp. Surfaces 17-24 year-old finished-product footballers in the €20-40m transfer band where selling clubs face structural pressure and buying clubs have validated demand. Output: Brokerage Opportunities workbook + Replenishment Leads workbook (by-product) + Streamlit multi-view app for interrogation.
+A brokerage matcher commissioned by Yatin Patel, executed by RMC. Surfaces 17-24 year-old finished-product footballers in the €20-40m transfer band where selling clubs face structural pressure and buying clubs have validated demand. Output: Brokerage Opportunities workbook + Replenishment Leads workbook (by-product) + Streamlit multi-view app for interrogation.
 
 This file briefs a fresh session. Assume the reader has the build spec PDF available but no conversation history.
 
@@ -355,7 +355,7 @@ The Kill List is the canonical exclusion mechanism for both Sheet 1 (workbook) a
 
 Zero-match or ambiguous (multi-hit) manual entries are **not applied** and surface as warnings at the end of the run (and in an expander on the Excluded Players page). Under-drop bias by design — never silently kill a legitimate candidate.
 
-**Legacy `data/player_overrides.xlsx`** — superseded by the Kill List. The file may still exist on disk but is no longer consulted by anything. Safe to delete.
+**Legacy `data/player_overrides.xlsx`** — superseded by the Kill List. The file may still exist on disk but is no longer consulted by anything. Safe to delete. `scripts/27_player_overrides_template.py` still regenerates it each refresh — Stage 2 cleanup to retire both the script and the file.
 
 ---
 

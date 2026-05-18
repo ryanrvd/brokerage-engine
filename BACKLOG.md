@@ -14,7 +14,7 @@ Items deliberately deferred. Each one was discussed, scoped enough to be impleme
 
 **When the proper Market Movement Maps build begins, the FIRST decision must be how to auto-sync the maps into the pipeline.** Options to evaluate:
 
-- **(a) gspread + Google Cloud Console with personal Google account.** Requires a service account or OAuth setup on `rmillercharlton@gmail.com`. Verify the free tier covers our read volume (~10 sheets × a few refreshes/day).
+- **(a) gspread + Google Cloud Console with personal Google account.** Requires a service account or OAuth setup on the operator's Google account. Verify the free tier covers our read volume (~10 sheets × a few refreshes/day).
 - **(b) OAuth Desktop App flow.** User-account OAuth (no service account). Token refresh handled locally. Slightly more friction at first run but no Cloud Console project to maintain.
 - **(c) Apps Script auto-export from within each sheet.** Each sheet hosts a small script that exports CSV/XLSX to Drive or a webhook on edit. Most "Google-native" option; no external infra. Downside: 8 scripts to maintain.
 - **(d) A third-party sync service** (Coupler, Stitch, etc.). Paid. Lowest engineering effort, ongoing cost.
