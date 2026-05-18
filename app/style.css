@@ -1,0 +1,240 @@
+/* Yatin Matcher — Streamlit styling, surgical only.
+   Anything that hides chrome at the top of the app risks hiding the
+   st.navigation(position="top") tab bar. Only hide things confirmed to NOT
+   contain the nav. */
+
+footer                                    { visibility: hidden; }
+.viewerBadge_container__1QSob             { display: none; }
+
+/* Tighten the top padding so the title sits closer to the top */
+.block-container {
+    padding-top: 1.5rem !important;
+    padding-bottom: 2rem !important;
+    max-width: 100% !important;
+}
+
+/* Typography hierarchy */
+h1 {
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    margin-bottom: 0.25rem !important;
+}
+
+/* Caption styling — used under the title */
+.stCaption, [data-testid="stCaptionContainer"] {
+    color: #6b7280;
+    font-size: 0.875rem;
+}
+
+/* Sidebar tightening */
+[data-testid="stSidebar"] {
+    background-color: #fafafa;
+    border-right: 1px solid #e5e7eb;
+}
+[data-testid="stSidebar"] h3 {
+    font-size: 1rem;
+    margin-bottom: 0.5rem;
+}
+
+/* ────────────────────────────────────────────────────────────────────────
+   Sidebar wordmark — "Brokerage Engine / RMC"
+   ──────────────────────────────────────────────────────────────────────── */
+.rvc-wordmark {
+    padding: 0.25rem 0 0.75rem 0;
+}
+.rvc-wordmark-title {
+    font-size: 1.5rem;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+    color: #111827;
+    line-height: 1.2;
+}
+.rvc-wordmark-subtitle {
+    margin-top: 4px;
+    font-size: 0.85rem;
+    font-weight: 400;
+    color: #6B7280;
+    line-height: 1.35;
+}
+.rvc-wordmark-attribution {
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    color: #374151;
+}
+
+/* ────────────────────────────────────────────────────────────────────────
+   Page title block on Targets
+   ──────────────────────────────────────────────────────────────────────── */
+.rvc-page-title h1 {
+    font-size: 2rem !important;
+    font-weight: 700 !important;
+    letter-spacing: -0.02em;
+    margin: 0 0 0.25rem 0 !important;
+    color: #111827;
+}
+.rvc-page-subtitle {
+    color: #374151;
+    font-size: 0.9rem;
+    line-height: 1.45;
+    max-width: 720px;
+    margin-bottom: 0.5rem;
+}
+
+/* ────────────────────────────────────────────────────────────────────────
+   KPI tiles — uniform custom HTML row
+   ──────────────────────────────────────────────────────────────────────── */
+.rvc-tile-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 14px;
+    margin: 16px 0 18px 0;
+}
+.rvc-tile {
+    padding: 14px 18px;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    background: #ffffff;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+    /* Tall enough to absorb a subtitle line without growing — tiles
+       without a subtitle vertical-center via justify-content. */
+    min-height: 108px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+.rvc-tile-label {
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: #6B7280;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+.rvc-tile-value {
+    font-size: 1.875rem;
+    font-weight: 800;
+    color: #111827;
+    line-height: 1.15;
+    margin-top: 2px;
+}
+.rvc-tile-sub {
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: #374151;
+    margin-top: 4px;
+    line-height: 1.3;
+    /* truncate long player → buyer strings with ellipsis */
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Legacy metric tile styling (other pages still use st.metric) */
+[data-testid="stMetric"] {
+    background-color: #f9fafb;
+    padding: 0.75rem 1rem;
+    border-radius: 6px;
+    border: 1px solid #e5e7eb;
+}
+[data-testid="stMetricLabel"] {
+    font-size: 0.75rem !important;
+    color: #6b7280 !important;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+[data-testid="stMetricValue"] {
+    font-size: 1.5rem !important;
+    font-weight: 600 !important;
+}
+
+/* ────────────────────────────────────────────────────────────────────────
+   Sidebar filter section labels — small uppercase muted dividers
+   between filter groups (Position & League, Name Search, Score Ranges)
+   ──────────────────────────────────────────────────────────────────────── */
+.rvc-filter-section-label {
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #6B7280;
+    margin: 1.1rem 0 0.4rem 0;
+    padding-top: 0.25rem;
+    border-top: 1px solid #E5E7EB;
+}
+/* Tighten widget vertical rhythm in the sidebar so the filter list
+   doesn't sprawl. Each widget label/value gets a little breathing room
+   but the gaps between widgets shrink. */
+[data-testid="stSidebar"] [data-testid="stTextInput"],
+[data-testid="stSidebar"] [data-testid="stNumberInput"],
+[data-testid="stSidebar"] [data-testid="stMultiSelect"],
+[data-testid="stSidebar"] [data-testid="stSelectbox"] {
+    margin-bottom: 0.35rem;
+}
+[data-testid="stSidebar"] label p {
+    font-size: 0.8rem !important;
+    font-weight: 500 !important;
+    color: #374151 !important;
+    margin-bottom: 2px !important;
+}
+[data-testid="stSidebar"] [data-testid="stCaptionContainer"] {
+    margin: 0.35rem 0 2px 0;
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: #4B5563;
+}
+
+/* Clear all filters button — full width, muted */
+[data-testid="stSidebar"] [data-testid="stButton"] button[kind="secondary"]:has(div:contains("Clear")) {
+    background: #FEF2F2;
+    color: #991B1B;
+    border-color: #FECACA;
+}
+
+/* ────────────────────────────────────────────────────────────────────────
+   "Other Buyers" pill — small muted-gray badge with brand-blue text
+   ──────────────────────────────────────────────────────────────────────── */
+.rvc-pill-otherbuyers {
+    display: inline-block;
+    background: #F3F4F6;
+    color: #1F3864;
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 10px;
+    line-height: 1.4;
+    border: 1px solid #E5E7EB;
+}
+
+/* ────────────────────────────────────────────────────────────────────────
+   Excluded-row badge — All Matches page only
+   Pale red pill next to a Kill List player's name with the exclusion
+   reason on hover (native HTML title attribute).
+   ──────────────────────────────────────────────────────────────────────── */
+.rvc-excluded-badge {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 1px 7px;
+    border-radius: 8px;
+    background: #FEF2F2;
+    color: #991B1B;
+    font-size: 0.7rem;
+    font-weight: 600;
+    line-height: 1.4;
+    border: 1px solid #FECACA;
+    cursor: help;        /* indicates a hover tooltip is present */
+    white-space: nowrap;
+    vertical-align: middle;
+}
+
+/* ────────────────────────────────────────────────────────────────────────
+   Existing dataframe styling (other pages still use st.dataframe)
+   ──────────────────────────────────────────────────────────────────────── */
+[data-testid="stDataFrame"] {
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+    overflow: hidden;
+}
+[data-testid="stDataFrame"] [role="row"] [role="gridcell"],
+[data-testid="stDataFrame"] [role="row"] [role="columnheader"] {
+    padding-top: 8px !important;
+    padding-bottom: 8px !important;
+}
