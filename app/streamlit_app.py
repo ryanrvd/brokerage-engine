@@ -53,14 +53,20 @@ def _check_password() -> bool:
     if pw:
         if pw == st.secrets.get("password"):
             st.session_state["_password_correct"] = True
-            # Cookie write is queued for the response flush; the
-            # subsequent st.rerun() lets the new render pick up the
-            # session_state flag immediately.
+            # iOS Safari drops same_site="lax" cookies set inside the
+            # streamlit-cookies-controller iframe between page navigations
+            # — same_site="none" + secure=True is required for the cookie
+            # to persist across in-app link clicks. The Secure attribute
+            # forbids HTTP, so on localhost dev we fall back to "lax"+False
+            # (gate works on first entry but won't survive navigation
+            # locally; acceptable since prod is the only target).
+            is_https = (st.context.url or "").startswith("https://")
             cookies.set(
                 cookie_name,
                 expected_hash,
-                max_age=86400,        # 24 hours
-                same_site="lax",       # required for in-app link clicks
+                max_age=86400,
+                same_site="none" if is_https else "lax",
+                secure=is_https,
             )
             st.rerun()
         else:
