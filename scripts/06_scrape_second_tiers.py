@@ -301,7 +301,7 @@ def main() -> None:
         dst.execute("DELETE FROM player_universe WHERE data_source = 'tm_scrape'")
         for r in all_rows:
             dst.execute(
-                "INSERT OR REPLACE INTO player_universe VALUES (" + ",".join(["?"] * 34) + ")",
+                "INSERT OR REPLACE INTO player_universe VALUES (" + ",".join(["?"] * 32) + ")",
                 (
                     r["player_id"],
                     r["name"],
@@ -335,8 +335,6 @@ def main() -> None:
                     0,                     # on_loan — default 0; flipped by 11
                     "tm_scrape",
                     str(snapshot),
-                    None,  # sellability_status — set by 09_compute_sellability.py
-                    None,  # loan_end_date — set by 11 or 28
                 ),
             )
         dst.commit()

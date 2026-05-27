@@ -65,7 +65,8 @@ def get_player_search_options() -> list[dict]:
     rows = _read_sql("""
         SELECT pu.player_id, pu.name AS official_name, pu.current_club, pu.league_id
         FROM player_universe pu
-        WHERE pu.sellability_status = 'sellable_now'
+        WHERE (pu.right_priced=1 OR pu.finished_product=1
+               OR pu.finished_product IS NULL OR pu.contract_leveraged=1)
     """)
     import player_display as _pd
     pmap = _pd.load_display_map()
@@ -373,7 +374,8 @@ def get_position(bucket: str) -> dict:
         FROM player_universe pu
         LEFT JOIN club_pressure cp ON cp.club_id = pu.parent_club_id
         WHERE pu.position_bucket = ?
-          AND pu.sellability_status = 'sellable_now'
+          AND (pu.right_priced=1 OR pu.finished_product=1
+               OR pu.finished_product IS NULL OR pu.contract_leveraged=1)
         ORDER BY pu.sellability_score DESC
     """, (bucket,))
     requests_df = _read_sql("""
@@ -404,7 +406,8 @@ def get_league(league_code: str) -> dict:
         FROM player_universe pu
         LEFT JOIN club_pressure cp ON cp.club_id = pu.parent_club_id
         WHERE cp.league_id = ?
-          AND pu.sellability_status = 'sellable_now'
+          AND (pu.right_priced=1 OR pu.finished_product=1
+               OR pu.finished_product IS NULL OR pu.contract_leveraged=1)
         ORDER BY pu.sellability_score DESC
     """, (league_code,))
     requests_df = _read_sql("""

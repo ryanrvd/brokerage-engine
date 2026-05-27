@@ -51,10 +51,7 @@ CREATE TABLE player_universe (
     on_loan                INTEGER,    -- 1 if parent_club != current_club, else 0
     -- Source provenance — useful when we merge scraped second-tier data
     data_source            TEXT NOT NULL DEFAULT 'dcaribou',
-    snapshot_date          DATE NOT NULL,
-    -- Day 8: sellability as tag (not filter) + loan metadata
-    sellability_status     TEXT,       -- sellable_now / sellable_with_caveat / not_sellable / out_of_scope
-    loan_end_date          DATE        -- when the loan expires (NULL if not on loan)
+    snapshot_date          DATE NOT NULL
 );
 
 DROP TABLE IF EXISTS club_pressure;

@@ -298,15 +298,15 @@ def _load_manual_wages() -> dict[int, float]:
 def build_matches(con: sqlite3.Connection) -> tuple[int, int, dict]:
     """Returns (total_scored_pairs, total_retained_after_top3, stats)."""
 
-    # Pull sellable assets — sellability_status = 'sellable_now' preserves
-    # the same cohort as the prior flag-based filter. The Day 8 expansion
-    # added many more players to player_universe; only sellable_now enter matching.
+    # Pull sellable assets — same filter as Sheet 4 (script 10).
     players = con.execute("""
         SELECT pu.player_id, pu.name, pu.age, pu.position_bucket,
                pu.current_tm_value_eur, pu.sellability_score, pu.league_id,
                pu.current_club, pu.parent_club, pu.parent_club_id, pu.on_loan
         FROM player_universe pu
-        WHERE pu.sellability_status = 'sellable_now'
+        WHERE (pu.right_priced = 1)
+           OR (pu.finished_product = 1 OR pu.finished_product IS NULL)
+           OR (pu.contract_leveraged = 1)
     """).fetchall()
 
     # Manual wage data (data/manual_wages.xlsx) — only populated for players

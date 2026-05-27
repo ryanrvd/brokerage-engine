@@ -102,13 +102,9 @@ def main() -> None:
     # Pull universe rows + dcaribou URLs.
     with sqlite3.connect(config.SQLITE_FILE) as con:
         con.row_factory = sqlite3.Row
-        # Skip pl_squad_full players — script 28 already set their loan info
-        # at ingestion time from the loans-out page.
         rows = con.execute("""
             SELECT player_id, name, current_club, current_club_id, league_id, data_source
-            FROM player_universe
-            WHERE data_source != 'pl_squad_full'
-            ORDER BY league_id, name
+            FROM player_universe ORDER BY league_id, name
         """).fetchall()
 
     # Map of player_id → dcaribou TM URL for the dcaribou rows.
