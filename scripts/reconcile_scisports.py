@@ -1,41 +1,31 @@
 """
-Reconcile `data/scisports_ratings.xlsx` against the current sellable cohort.
+Reconcile `data/scisports_ratings.xlsx` against the current player universe.
 
-Sci Sports talent layer — manual CA (current ability) and PA (potential
-ability) ratings, entered by the user and preserved across weekly TM refreshes.
+Day 8 expansion: scope widened from "sellable cohort only" (~157 players) to
+"every PL squad player (parent club in PL), including loaned-out players",
+plus the original sellable cohort across all 19 leagues. This gives the
+worksheet ~600+ rows for the PL phase; Championship follows in a later prompt.
 
 User workflow:
-  1. After the main pipeline (scripts 08 → 09 → 11 → 12 → 13), run
-       python scripts/reconcile_scisports.py
-     which creates the file on first run or updates it idempotently thereafter.
-  2. Open `data/scisports_ratings.xlsx`, filter on status=pending — that's the
-     worklist. Fill in current_ability + potential_ability from the Sci Sports
-     dashboard.
-  3. Save and run
-       python scripts/load_scisports_ratings.py
-     to push the values into the `player_ratings` SQLite table.
+  1. Run the pipeline through scripts 09 → reconcile_scisports.py
+  2. Open `data/scisports_ratings.xlsx`, filter status=pending — that's the
+     worklist. Fill in current_ability + potential_ability from Sci Sports.
+  3. Save and run `python scripts/load_scisports_ratings.py`.
 
-Reconciliation rules:
-  • New player in cohort, not in file → append with empty CA/PA, status=pending
-  • Existing rated player still in cohort → preserve CA/PA, mark active
-  • Existing rated player NOT in cohort → mark departed, preserve CA/PA so
-    ratings survive a transient drop-out (player returns next week → status
-    flips back automatically)
+Reconciliation rules (unchanged in spirit):
+  • New player in scope, not in file → append with empty CA/PA, status=pending
+  • Existing rated player still in scope → preserve CA/PA, mark active
+  • Existing rated player NOT in scope → mark departed, preserve CA/PA
   • Player on Kill List → mark killed (still visible in file, flagged)
+  • Reactivation: previously departed player back in scope → restore status
 
-`last_updated` is auto-stamped only on rows whose status changes.
+Scope definition (Day 8):
+  "in scope" = parent_club is a PL club (league_id = 'GB1' in club_pressure)
+               OR the player is in the original sellable cohort (sellability_status
+               = 'sellable_now')
 
-Workbook formatting:
-  • Editable cells (current_ability, potential_ability, notes) get a pale
-    yellow fill so the user knows where to type.
-  • Read-only cells are left default.
-  • Top row frozen, brand-blue header band, sensible column widths.
-  • Rows sorted: pending → active → departed → killed (worklist surfaces
-    first); within each band, by player name.
-
-File-lock safety: if the user has the workbook open in Excel, openpyxl will
-hit PermissionError on save and we exit with a clear message rather than
-corrupting the file.
+File-lock safety: if the workbook is open in Excel, openpyxl hits
+PermissionError and we exit with a clear message.
 """
 
 from __future__ import annotations
@@ -51,15 +41,20 @@ from openpyxl.utils import get_column_letter
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import config
-import kill_list  # project-root module
+import kill_list
 
 FILE_PATH = Path(config.DATA_DIR) / "scisports_ratings.xlsx"
+
+PL_LEAGUE_ID = "GB1"
 
 COLUMNS: list[str] = [
     "tm_player_id",
     "player_name",
     "parent_club",
+    "current_club",
     "position_bucket",
+    "age",
+    "is_on_loan",
     "current_ability",
     "potential_ability",
     "status",
@@ -71,7 +66,10 @@ COLUMN_WIDTHS: dict[str, int] = {
     "tm_player_id":      14,
     "player_name":       28,
     "parent_club":       30,
+    "current_club":      30,
     "position_bucket":   10,
+    "age":                6,
+    "is_on_loan":         12,
     "current_ability":   16,
     "potential_ability": 16,
     "status":            12,
@@ -83,35 +81,51 @@ STATUS_ORDER = {"pending": 0, "active": 1, "departed": 2, "killed": 3}
 
 # ─── DB helpers ──────────────────────────────────────────────────────────────
 def get_current_cohort(con: sqlite3.Connection) -> dict[int, dict]:
-    """Return {tm_player_id: {player_name, parent_club, position_bucket}} for
-    every player in the current sellable cohort. Same filter Sheet 4 / Kill
-    List / Targets all use."""
+    """Return {tm_player_id: {...}} for every player in scope.
+
+    Scope = PL-parented players (parent club in GB1) UNION the original
+    sellable cohort (sellability_status = 'sellable_now') from all leagues.
+    """
+    # PL club IDs (from club_pressure, post-override)
+    pl_club_ids = set(
+        r[0] for r in con.execute(
+            "SELECT club_id FROM club_pressure WHERE league_id = ?", (PL_LEAGUE_ID,)
+        ).fetchall()
+    )
+
     rows = con.execute("""
-        SELECT player_id, name, parent_club, position_bucket
-        FROM player_universe
-        WHERE (right_priced=1 OR finished_product=1
-               OR finished_product IS NULL OR contract_leveraged=1)
+        SELECT pu.player_id, pu.name, pu.parent_club, pu.current_club,
+               pu.position_bucket, pu.age, pu.on_loan, pu.parent_club_id,
+               pu.sellability_status
+        FROM player_universe pu
     """).fetchall()
-    return {
-        int(pid): {
+
+    out: dict[int, dict] = {}
+    for (pid, name, parent_club, current_club, position_bucket,
+         age, on_loan, parent_club_id, sellability_status) in rows:
+        # Include if: parent is a PL club OR player is sellable_now
+        is_pl_parented = str(parent_club_id) in pl_club_ids if parent_club_id else False
+        is_sellable = sellability_status == "sellable_now"
+        if not (is_pl_parented or is_sellable):
+            continue
+        out[int(pid)] = {
             "player_name":     name or "",
             "parent_club":     parent_club or "",
+            "current_club":    current_club or "",
             "position_bucket": position_bucket or "",
+            "age":             age,
+            "is_on_loan":      True if on_loan else False,
         }
-        for pid, name, parent_club, position_bucket in rows
-    }
+    return out
 
 
 def get_killed_ids(con: sqlite3.Connection) -> set[int]:
-    """Players on the Kill List (manual + agency-rule, deduped)."""
     state = kill_list.compute_kill_list_state(con)
     return {int(pid) for pid in state["excluded_ids"]}
 
 
 # ─── File I/O ────────────────────────────────────────────────────────────────
 def read_existing(file_path: Path) -> dict[int, dict]:
-    """Read the existing workbook into {tm_player_id: row_dict}. Empty dict
-    if the file doesn't exist yet (first run)."""
     if not file_path.exists():
         return {}
     wb = load_workbook(file_path)
@@ -134,9 +148,9 @@ def read_existing(file_path: Path) -> dict[int, dict]:
 
 
 def _is_rated(ca, pa) -> bool:
-    """Treat any non-empty CA OR PA value as 'rated'."""
     for v in (ca, pa):
-        if v is None: continue
+        if v is None:
+            continue
         s = str(v).strip()
         if s and s.lower() not in ("none", "nan"):
             return True
@@ -144,13 +158,10 @@ def _is_rated(ca, pa) -> bool:
 
 
 def write_workbook(file_path: Path, rows: list[dict]) -> None:
-    """Write reconciled rows out with header band, editable-cell tint,
-    frozen top row, and sensible column widths."""
     wb = Workbook()
     ws = wb.active
     ws.title = "scisports_ratings"
 
-    # Header row
     ws.append(COLUMNS)
     header_font = Font(bold=True, color="FFFFFF")
     header_fill = PatternFill("solid", fgColor="1F3864")
@@ -160,18 +171,18 @@ def write_workbook(file_path: Path, rows: list[dict]) -> None:
         cell.fill = header_fill
         cell.alignment = Alignment(horizontal="left", vertical="center")
 
-    # Data rows
-    editable_fill = PatternFill("solid", fgColor="FFFBEA")  # very light yellow
+    editable_fill = PatternFill("solid", fgColor="FFFBEA")
     for row_idx, row in enumerate(rows, start=2):
         for col_idx, col_name in enumerate(COLUMNS, start=1):
             value = row.get(col_name)
             if isinstance(value, date):
                 value = value.isoformat()
+            if isinstance(value, bool):
+                value = "TRUE" if value else "FALSE"
             cell = ws.cell(row=row_idx, column=col_idx, value=value)
             if col_name in EDITABLE_COLS:
                 cell.fill = editable_fill
 
-    # Column widths + frozen header
     for col_idx, col_name in enumerate(COLUMNS, start=1):
         ws.column_dimensions[get_column_letter(col_idx)].width = COLUMN_WIDTHS.get(col_name, 16)
     ws.freeze_panes = "A2"
@@ -190,12 +201,10 @@ def reconcile(cohort: dict[int, dict],
               killed_ids: set[int],
               existing: dict[int, dict],
               today_iso: str) -> tuple[list[dict], dict[str, int]]:
-    """Return (sorted_rows, counts)."""
     reconciled: dict[int, dict] = {}
     cohort_ids = set(cohort.keys())
     existing_ids = set(existing.keys())
 
-    # Players in the current cohort
     for pid, meta in cohort.items():
         prev = existing.get(pid, {})
         prev_status = (prev.get("status") or "").strip().lower()
@@ -207,7 +216,6 @@ def reconcile(cohort: dict[int, dict],
         elif _is_rated(ca, pa):
             new_status = "active"
         else:
-            # New player or previously rated-then-cleared: pending
             new_status = "pending"
 
         last_updated = prev.get("last_updated") or today_iso
@@ -218,7 +226,10 @@ def reconcile(cohort: dict[int, dict],
             "tm_player_id":      pid,
             "player_name":       meta["player_name"],
             "parent_club":       meta["parent_club"],
+            "current_club":      meta["current_club"],
             "position_bucket":   meta["position_bucket"],
+            "age":               meta["age"],
+            "is_on_loan":        meta["is_on_loan"],
             "current_ability":   ca,
             "potential_ability": pa,
             "status":            new_status,
@@ -226,7 +237,6 @@ def reconcile(cohort: dict[int, dict],
             "notes":             prev.get("notes") or "",
         }
 
-    # Players in the existing file but NOT in the current cohort → departed
     for pid in existing_ids - cohort_ids:
         prev = existing[pid]
         prev_status = (prev.get("status") or "").strip().lower()
@@ -238,7 +248,10 @@ def reconcile(cohort: dict[int, dict],
             "tm_player_id":      pid,
             "player_name":       prev.get("player_name") or "",
             "parent_club":       prev.get("parent_club") or "",
+            "current_club":      prev.get("current_club") or "",
             "position_bucket":   prev.get("position_bucket") or "",
+            "age":               prev.get("age"),
+            "is_on_loan":        prev.get("is_on_loan") or False,
             "current_ability":   prev.get("current_ability"),
             "potential_ability": prev.get("potential_ability"),
             "status":            new_status,
@@ -246,8 +259,6 @@ def reconcile(cohort: dict[int, dict],
             "notes":             prev.get("notes") or "",
         }
 
-    # Sort: pending first (worklist), then active, departed, killed; within
-    # each band by player name (case-insensitive)
     sorted_rows = sorted(
         reconciled.values(),
         key=lambda r: (
@@ -275,17 +286,39 @@ def main() -> None:
         con.close()
 
     existing = read_existing(FILE_PATH)
+    existing_count = len(existing)
     sorted_rows, counts = reconcile(cohort, killed_ids, existing, today_iso)
 
     write_workbook(FILE_PATH, sorted_rows)
 
-    print(
-        f"Reconciled {FILE_PATH} — "
-        f"{counts['pending']} pending (new), "
-        f"{counts['active']} active, "
-        f"{counts['departed']} departed, "
-        f"{counts['killed']} killed"
+    new_rows = len(sorted_rows) - existing_count
+    # Departures = existing rows not in new cohort
+    departed_from_existing = sum(
+        1 for pid in existing
+        if pid not in set(cohort.keys()) and existing[pid].get("status") != "departed"
     )
+    reactivated = sum(
+        1 for pid in existing
+        if (existing[pid].get("status") or "").strip().lower() == "departed"
+        and pid in cohort
+    )
+
+    print(f"Reconciled {FILE_PATH}:")
+    print(f"  Existing rows preserved: {existing_count}")
+    print(f"  New rows added:          {max(0, new_rows)}")
+    print(f"  Departures marked:       {departed_from_existing}")
+    print(f"  Reactivations:           {reactivated}")
+    print(f"  Total rows:              {len(sorted_rows)}")
+    print()
+    print("By status:")
+    for status in ("active", "killed", "pending", "departed"):
+        label = {
+            "active": "active (rated)",
+            "killed": "killed",
+            "pending": "pending (awaiting rating)",
+            "departed": "departed",
+        }[status]
+        print(f"  {label:35s} {counts.get(status, 0)}")
 
 
 if __name__ == "__main__":

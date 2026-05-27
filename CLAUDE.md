@@ -502,10 +502,11 @@ After a code change or fresh dcaribou snapshot:
 .venv/bin/python scripts/06_scrape_second_tiers.py
 .venv/bin/python scripts/07_extend_roster.py
 .venv/bin/python scripts/19_apply_league_overrides.py    # pre-08: corrects senior_roster + player_universe before pressure is scored
+.venv/bin/python scripts/28_ingest_pl_squads.py          # Day 8: expand player_universe to full PL squads (dcaribou, no TM scrape)
 .venv/bin/python scripts/08_compute_pressure.py
-.venv/bin/python scripts/11_patch_loans.py
+.venv/bin/python scripts/11_patch_loans.py               # skips pl_squad_full players (loan info set at ingestion)
 .venv/bin/python scripts/13_scrape_fees.py
-.venv/bin/python scripts/09_compute_sellability.py
+.venv/bin/python scripts/09_compute_sellability.py       # scores ALL players + assigns sellability_status tag
 .venv/bin/python scripts/05_excel_export.py
 .venv/bin/python scripts/10_export_pressure_sheets.py
 # ── Day 4 demand-side layer ────────────────────────────────────────────────
@@ -528,13 +529,15 @@ All HTML/JSON cached in `data/tm_cache/`, so post-first-run reruns are instant. 
 
 User-curated CA (current ability) and PA (potential ability) ratings, manually entered and preserved across weekly TM refreshes.
 
-- **Source of truth:** `data/scisports_ratings.xlsx`
-- **Reconciliation:** `python scripts/reconcile_scisports.py` (auto-runs in the refresh pipeline above, between `18_manual_flags_excel.py` and `22_match_engine.py`)
-- **SQLite loader:** `python scripts/load_scisports_ratings.py` (runs right after reconciliation)
+- **Source of truth:** `data/scisports_ratings.xlsx` (unchanged file path)
+- **Scope (Day 8 expansion):** every PL squad player (parent club in PL), including loaned-out players, PLUS the original sellable cohort across all 19 leagues. ~1,500 rows total. Championship players added in a follow-up phase.
+- **Reconciliation:** `python scripts/reconcile_scisports.py` (auto-runs in the refresh pipeline, between `18_manual_flags_excel.py` and `22_match_engine.py`)
+- **SQLite loader:** `python scripts/load_scisports_ratings.py` (runs right after reconciliation; pushes only `tm_player_id`, `current_ability`, `potential_ability`, `status`, `last_updated` to SQLite — context columns are display-only in the xlsx)
 - **SQLite table:** `player_ratings` — columns `tm_player_id` (PK, INTEGER), `current_ability` (REAL, NULL when not yet rated), `potential_ability` (REAL, NULL when not yet rated), `status` (TEXT: `pending` / `active` / `departed` / `killed`), `last_updated` (TEXT, ISO date)
-- **User workflow:** after the weekly pipeline runs, open `data/scisports_ratings.xlsx`, filter `status = pending` (those are new players in the cohort awaiting a rating), fill in CA / PA from the Sci Sports dashboard, save, and re-run `load_scisports_ratings.py` (or wait for the next pipeline run, which picks up the change automatically).
-- **Reconciliation rules:** new players in cohort → `pending` with blank CA/PA; existing rated players still in cohort → `active`, CA/PA preserved; rated players who dropped out of the cohort → `departed`, CA/PA preserved so a transient drop-out doesn't lose the rating; Kill List players → `killed` (still in file, flagged); `last_updated` auto-stamps only on rows whose status changed.
+- **Xlsx columns (Day 8):** `tm_player_id`, `player_name`, `parent_club`, `current_club`, `position_bucket`, `age`, `is_on_loan`, `current_ability` (editable, yellow), `potential_ability` (editable, yellow), `status`, `last_updated`, `notes` (editable, yellow). Context columns (`parent_club`, `current_club`, `age`, `is_on_loan`) are read-only, auto-populated each reconciliation run.
+- **User workflow:** after the weekly pipeline runs, open the xlsx, filter `status = pending` (new players awaiting rating), fill in CA / PA in the yellow cells from the Sci Sports dashboard, save, and re-run `load_scisports_ratings.py` (or wait for the next pipeline run).
+- **Reconciliation rules:** new players in scope → `pending` with blank CA/PA; existing rated players still in scope → `active`, CA/PA preserved; rated players who dropped out of scope → `departed`, CA/PA preserved so a transient drop-out doesn't lose the rating; Kill List players → `killed` (still in file, flagged); `last_updated` auto-stamps only on rows whose status changed.
+- **Scope definition:** "in scope" = parent club is a PL club (league_id = 'GB1' in club_pressure after overrides) OR `sellability_status = 'sellable_now'` across all leagues. This ensures the xlsx covers the full PL universe for the Market View while preserving non-PL sellable players for the matcher.
 - **File ordering:** workbook sorted `pending → active → departed → killed`, within each band by player name, so the worklist surfaces first.
-- **Scale TBD:** CA/PA stored as `REAL` with no validation today. Confirm the Sci Sports scale (1-100? 1-10? Letter grades?) when the first batch of ratings is entered; add bounds-checking to the loader once the convention is locked.
+- **Bounds-checking:** CA/PA validated in [0, 200], PA ≥ CA. Invalid rows get `status=invalid` and are logged by the loader.
 - **File-lock safety:** if the workbook is open in Excel when `reconcile_scisports.py` runs, openpyxl raises `PermissionError` and the script exits with a clear message rather than corrupting the file.
-- **Full UI + match-logic integration:** deferred to a separate prompt. Today's build is schema + plumbing only — Sheet 1 / Player View / matcher do NOT consume `player_ratings` yet.

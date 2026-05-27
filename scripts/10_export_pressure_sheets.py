@@ -164,9 +164,7 @@ def write_sellable_assets_sheet(wb: Workbook, con: sqlite3.Connection) -> int:
                cp.total_pressure_score, pu.sellability_score, pu.agency
         FROM player_universe pu
         LEFT JOIN club_pressure cp ON cp.club_id = pu.parent_club_id
-        WHERE (pu.right_priced = 1)
-           OR (pu.finished_product = 1 OR pu.finished_product IS NULL)
-           OR (pu.contract_leveraged = 1)
+        WHERE pu.sellability_status = 'sellable_now'
         ORDER BY pu.sellability_score DESC NULLS LAST, pu.name
     """).fetchall()
     for ri, r in enumerate(rows, start=2):
