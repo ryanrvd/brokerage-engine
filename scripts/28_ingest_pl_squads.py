@@ -59,6 +59,11 @@ CACHE_MAX_AGE_HOURS = 24
 # fresh cookie test exercises the historically-cached path.
 TARGET_LEAGUES = list(config.DEMAND_MAPPED_LEAGUES)
 
+# Supply-only second tiers not in DEMAND_MAPPED_LEAGUES. Included when
+# --include-extended-supply is passed, so promoted ES2/IT2/L2 clubs
+# (Monza, Schalke, etc.) have their current squads in player_universe.
+EXTENDED_SUPPLY_LEAGUES = ["ES2", "IT2", "L2"]
+
 CACHE_DIR = Path("data/tm_cache")
 CACHE_DIR.mkdir(parents=True, exist_ok=True)
 COOKIE_PATH = Path("data/tm_cookie.txt")
@@ -715,6 +720,8 @@ def main() -> None:
                         help="Scrape one club only (substring match on name)")
     parser.add_argument("--league", type=str, default=None,
                         help="Restrict to one league code (e.g. GB2)")
+    parser.add_argument("--include-extended-supply", action="store_true",
+                        help="Also scrape ES2 / IT2 / L2 (supply-only second tiers)")
     parser.add_argument("--plan-only", action="store_true",
                         help="Build/refresh squad_scrape_plan.json and exit")
     args = parser.parse_args()
@@ -726,7 +733,12 @@ def main() -> None:
         sys.exit(0 if ok else 1)
 
     # Build / refresh the scrape plan from current senior_roster + overrides
-    target_leagues = [args.league] if args.league else TARGET_LEAGUES
+    if args.league:
+        target_leagues = [args.league]
+    else:
+        target_leagues = list(TARGET_LEAGUES)
+        if args.include_extended_supply:
+            target_leagues.extend(EXTENDED_SUPPLY_LEAGUES)
     plan = build_scrape_plan(target_leagues)
 
     if args.plan_only:

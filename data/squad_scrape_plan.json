@@ -1,186 +1,126 @@
 {
-  "built_at": "2026-06-03T13:05:39+00:00",
+  "built_at": "2026-06-03T14:02:55+00:00",
   "leagues": {
     "GB1": [
       {
         "club_id": "11",
         "club_name": "Arsenal Football Club",
         "tm_url_slug": "fc-arsenal",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:46:01+00:00",
-        "squad_count": 24,
-        "loans_count": 3
+        "status": "done"
       },
       {
         "club_id": "989",
         "club_name": "Association Football Club Bournemouth",
         "tm_url_slug": "afc-bournemouth",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:46:07+00:00",
-        "squad_count": 26,
-        "loans_count": 7
+        "status": "done"
       },
       {
         "club_id": "405",
         "club_name": "Aston Villa Football Club",
         "tm_url_slug": "aston-villa",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:46:12+00:00",
-        "squad_count": 26,
-        "loans_count": 7
+        "status": "done"
       },
       {
         "club_id": "1148",
         "club_name": "Brentford Football Club",
         "tm_url_slug": "fc-brentford",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:46:19+00:00",
-        "squad_count": 31,
-        "loans_count": 3
+        "status": "done"
       },
       {
         "club_id": "1237",
         "club_name": "Brighton and Hove Albion Football Club",
         "tm_url_slug": "brighton-amp-hove-albion",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:46:25+00:00",
-        "squad_count": 33,
-        "loans_count": 5
+        "status": "done"
       },
       {
         "club_id": "631",
         "club_name": "Chelsea Football Club",
         "tm_url_slug": "fc-chelsea",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:46:31+00:00",
-        "squad_count": 31,
-        "loans_count": 7
+        "status": "done"
       },
       {
         "club_id": "990",
         "club_name": "Coventry City",
         "tm_url_slug": "coventry-city",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:46:39+00:00",
-        "squad_count": 26,
-        "loans_count": 1
+        "status": "done"
       },
       {
         "club_id": "873",
         "club_name": "Crystal Palace Football Club",
         "tm_url_slug": "crystal-palace",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:46:46+00:00",
-        "squad_count": 31,
-        "loans_count": 2
+        "status": "done"
       },
       {
         "club_id": "29",
         "club_name": "Everton Football Club",
         "tm_url_slug": "fc-everton",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:46:52+00:00",
-        "squad_count": 26,
-        "loans_count": 0
+        "status": "done"
       },
       {
         "club_id": "931",
         "club_name": "Fulham Football Club",
         "tm_url_slug": "fc-fulham",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:46:58+00:00",
-        "squad_count": 25,
-        "loans_count": 1
+        "status": "done"
       },
       {
         "club_id": "3008",
         "club_name": "Hull City",
         "tm_url_slug": "hull-city",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:47:05+00:00",
-        "squad_count": 29,
-        "loans_count": 8
+        "status": "done"
       },
       {
         "club_id": "677",
         "club_name": "Ipswich Town",
         "tm_url_slug": "ipswich-town",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:47:12+00:00",
-        "squad_count": 29,
-        "loans_count": 4
+        "status": "done"
       },
       {
         "club_id": "399",
         "club_name": "Leeds United Association Football Club",
         "tm_url_slug": "leeds-united",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:47:24+00:00",
-        "squad_count": 26,
-        "loans_count": 6
+        "status": "done"
       },
       {
         "club_id": "31",
         "club_name": "Liverpool Football Club",
         "tm_url_slug": "fc-liverpool",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:47:29+00:00",
-        "squad_count": 28,
-        "loans_count": 3
+        "status": "done"
       },
       {
         "club_id": "281",
         "club_name": "Manchester City Football Club",
         "tm_url_slug": "manchester-city",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:47:34+00:00",
-        "squad_count": 28,
-        "loans_count": 6
+        "status": "done"
       },
       {
         "club_id": "985",
         "club_name": "Manchester United Football Club",
         "tm_url_slug": "manchester-united",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:47:40+00:00",
-        "squad_count": 27,
-        "loans_count": 5
+        "status": "done"
       },
       {
         "club_id": "762",
         "club_name": "Newcastle United Football Club",
         "tm_url_slug": "newcastle-united",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:47:45+00:00",
-        "squad_count": 29,
-        "loans_count": 2
+        "status": "done"
       },
       {
         "club_id": "703",
         "club_name": "Nottingham Forest Football Club",
         "tm_url_slug": "nottingham-forest",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:47:51+00:00",
-        "squad_count": 29,
-        "loans_count": 6
+        "status": "done"
       },
       {
         "club_id": "289",
         "club_name": "Sunderland Association Football Club",
         "tm_url_slug": "afc-sunderland",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:47:57+00:00",
-        "squad_count": 28,
-        "loans_count": 13
+        "status": "done"
       },
       {
         "club_id": "148",
         "club_name": "Tottenham Hotspur Football Club",
         "tm_url_slug": "tottenham-hotspur",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:48:03+00:00",
-        "squad_count": 30,
-        "loans_count": 7
+        "status": "done"
       }
     ],
     "GB2": [
@@ -188,217 +128,145 @@
         "club_id": "337",
         "club_name": "Birmingham City",
         "tm_url_slug": "birmingham-city",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:48:08+00:00",
-        "squad_count": 23,
-        "loans_count": 1
+        "status": "done"
       },
       {
         "club_id": "164",
         "club_name": "Blackburn Rovers",
         "tm_url_slug": "blackburn-rovers",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:48:15+00:00",
-        "squad_count": 30,
-        "loans_count": 0
+        "status": "done"
       },
       {
         "club_id": "698",
         "club_name": "Bristol City",
         "tm_url_slug": "bristol-city",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:48:21+00:00",
-        "squad_count": 30,
-        "loans_count": 1
+        "status": "done"
       },
       {
         "club_id": "1132",
         "club_name": "Burnley Football Club",
         "tm_url_slug": "fc-burnley",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:48:27+00:00",
-        "squad_count": 31,
-        "loans_count": 5
+        "status": "done"
       },
       {
         "club_id": "358",
         "club_name": "Charlton Athletic",
         "tm_url_slug": "charlton-athletic",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:48:32+00:00",
-        "squad_count": 33,
-        "loans_count": 2
+        "status": "done"
       },
       {
         "club_id": "22",
         "club_name": "Derby County",
         "tm_url_slug": "derby-county",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:48:37+00:00",
-        "squad_count": 27,
-        "loans_count": 2
+        "status": "done"
       },
       {
         "club_id": "1003",
         "club_name": "Leicester City",
         "tm_url_slug": "leicester-city",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:48:42+00:00",
-        "squad_count": 27,
-        "loans_count": 2
+        "status": "done"
       },
       {
         "club_id": "641",
         "club_name": "Middlesbrough FC",
         "tm_url_slug": "fc-middlesbrough",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:48:49+00:00",
-        "squad_count": 30,
-        "loans_count": 2
+        "status": "done"
       },
       {
         "club_id": "1028",
         "club_name": "Millwall FC",
         "tm_url_slug": "millwall-fc",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:48:55+00:00",
-        "squad_count": 34,
-        "loans_count": 0
+        "status": "done"
       },
       {
         "club_id": "1123",
         "club_name": "Norwich City",
         "tm_url_slug": "norwich-city",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:49:00+00:00",
-        "squad_count": 36,
-        "loans_count": 1
+        "status": "done"
       },
       {
         "club_id": "988",
         "club_name": "Oxford United",
         "tm_url_slug": "oxford-united",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:49:06+00:00",
-        "squad_count": 38,
-        "loans_count": 2
+        "status": "done"
       },
       {
         "club_id": "1020",
         "club_name": "Portsmouth FC",
         "tm_url_slug": "portsmouth-fc",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:49:13+00:00",
-        "squad_count": 36,
-        "loans_count": 1
+        "status": "done"
       },
       {
         "club_id": "466",
         "club_name": "Preston North End",
         "tm_url_slug": "preston-north-end",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:49:19+00:00",
-        "squad_count": 31,
-        "loans_count": 0
+        "status": "done"
       },
       {
         "club_id": "1039",
         "club_name": "Queens Park Rangers",
         "tm_url_slug": "queens-park-rangers",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:49:25+00:00",
-        "squad_count": 31,
-        "loans_count": 3
+        "status": "done"
       },
       {
         "club_id": "350",
         "club_name": "Sheffield United",
         "tm_url_slug": "sheffield-united",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:49:32+00:00",
-        "squad_count": 31,
-        "loans_count": 5
+        "status": "done"
       },
       {
         "club_id": "1035",
         "club_name": "Sheffield Wednesday",
         "tm_url_slug": "sheffield-wednesday",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:49:38+00:00",
-        "squad_count": 23,
-        "loans_count": 1
+        "status": "done"
       },
       {
         "club_id": "180",
         "club_name": "Southampton FC",
         "tm_url_slug": "fc-southampton",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:49:43+00:00",
-        "squad_count": 32,
-        "loans_count": 6
+        "status": "done"
       },
       {
         "club_id": "512",
         "club_name": "Stoke City",
         "tm_url_slug": "stoke-city",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:49:49+00:00",
-        "squad_count": 27,
-        "loans_count": 1
+        "status": "done"
       },
       {
         "club_id": "2288",
         "club_name": "Swansea City",
         "tm_url_slug": "swansea-city",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:49:56+00:00",
-        "squad_count": 27,
-        "loans_count": 3
+        "status": "done"
       },
       {
         "club_id": "1010",
         "club_name": "Watford FC",
         "tm_url_slug": "fc-watford",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:50:02+00:00",
-        "squad_count": 29,
-        "loans_count": 4
+        "status": "done"
       },
       {
         "club_id": "984",
         "club_name": "West Bromwich Albion",
         "tm_url_slug": "west-bromwich-albion",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:50:08+00:00",
-        "squad_count": 24,
-        "loans_count": 0
+        "status": "done"
       },
       {
         "club_id": "379",
         "club_name": "West Ham United Football Club",
         "tm_url_slug": "west-ham-united",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:50:14+00:00",
-        "squad_count": 24,
-        "loans_count": 6
+        "status": "done"
       },
       {
         "club_id": "543",
         "club_name": "Wolverhampton Wanderers Football Club",
         "tm_url_slug": "wolverhampton-wanderers",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:50:20+00:00",
-        "squad_count": 27,
-        "loans_count": 4
+        "status": "done"
       },
       {
         "club_id": "1112",
         "club_name": "Wrexham AFC",
         "tm_url_slug": "wrexham-afc",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:50:26+00:00",
-        "squad_count": 33,
-        "loans_count": 8
+        "status": "done"
       }
     ],
     "ES1": [
@@ -406,363 +274,252 @@
         "club_id": "621",
         "club_name": "Athletic Club Bilbao",
         "tm_url_slug": "athletic-bilbao",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:50:31+00:00",
-        "squad_count": 28,
-        "loans_count": 6
+        "status": "done"
       },
       {
         "club_id": "331",
         "club_name": "Club Atl\u00e9tico Osasuna",
         "tm_url_slug": "ca-osasuna",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:50:36+00:00",
-        "squad_count": 22,
-        "loans_count": 0
+        "status": "done"
       },
       {
         "club_id": "13",
         "club_name": "Club Atl\u00e9tico de Madrid S.A.D.",
         "tm_url_slug": "atletico-madrid",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:50:42+00:00",
-        "squad_count": 23,
-        "loans_count": 3
+        "status": "done"
       },
       {
         "club_id": "1108",
         "club_name": "Deportivo Alav\u00e9s S. A. D.",
         "tm_url_slug": "deportivo-alaves",
+        "status": "done"
+      },
+      {
+        "club_id": "897",
+        "club_name": "Deportivo de La Coru\u00f1a",
+        "tm_url_slug": "deportivo-la-coruna",
         "status": "done",
-        "scraped_at": "2026-06-03T12:50:49+00:00",
-        "squad_count": 24,
-        "loans_count": 10
+        "scraped_at": "2026-06-03T13:55:17+00:00",
+        "squad_count": 26,
+        "loans_count": 7
       },
       {
         "club_id": "1531",
         "club_name": "Elche Club de F\u00fatbol S.A.D.",
         "tm_url_slug": "fc-elche",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:50:55+00:00",
-        "squad_count": 26,
-        "loans_count": 5
+        "status": "done"
       },
       {
         "club_id": "131",
         "club_name": "Futbol Club Barcelona",
         "tm_url_slug": "fc-barcelona",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:51:01+00:00",
-        "squad_count": 25,
-        "loans_count": 6
+        "status": "done"
       },
       {
         "club_id": "3709",
         "club_name": "Getafe Club de F\u00fatbol S. A. D. Team Dubai",
         "tm_url_slug": "fc-getafe",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:51:06+00:00",
-        "squad_count": 25,
-        "loans_count": 5
-      },
-      {
-        "club_id": "12321",
-        "club_name": "Girona F\u00fatbol Club S. A. D.",
-        "tm_url_slug": "fc-girona",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:51:12+00:00",
-        "squad_count": 27,
-        "loans_count": 8
+        "status": "done"
       },
       {
         "club_id": "3368",
         "club_name": "Levante Uni\u00f3n Deportiva S.A.D.",
         "tm_url_slug": "ud-levante",
+        "status": "done"
+      },
+      {
+        "club_id": "630",
+        "club_name": "Racing Santander",
+        "tm_url_slug": "racing-santander",
         "status": "done",
-        "scraped_at": "2026-06-03T12:51:17+00:00",
-        "squad_count": 27,
-        "loans_count": 4
+        "scraped_at": "2026-06-03T13:55:27+00:00",
+        "squad_count": 25,
+        "loans_count": 3
       },
       {
         "club_id": "367",
         "club_name": "Rayo Vallecano de Madrid S. A. D.",
         "tm_url_slug": "rayo-vallecano",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:51:23+00:00",
-        "squad_count": 27,
-        "loans_count": 4
+        "status": "done"
       },
       {
         "club_id": "150",
         "club_name": "Real Betis Balompi\u00e9 S.A.D.",
         "tm_url_slug": "real-betis-sevilla",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:51:29+00:00",
-        "squad_count": 27,
-        "loans_count": 4
+        "status": "done"
       },
       {
         "club_id": "940",
         "club_name": "Real Club Celta de Vigo S. A. D.",
         "tm_url_slug": "celta-vigo",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:51:34+00:00",
-        "squad_count": 28,
-        "loans_count": 5
-      },
-      {
-        "club_id": "237",
-        "club_name": "Real Club Deportivo Mallorca S.A.D.",
-        "tm_url_slug": "rcd-mallorca",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:51:40+00:00",
-        "squad_count": 26,
-        "loans_count": 3
+        "status": "done"
       },
       {
         "club_id": "418",
         "club_name": "Real Madrid Club de F\u00fatbol",
         "tm_url_slug": "real-madrid",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:51:46+00:00",
-        "squad_count": 29,
-        "loans_count": 1
-      },
-      {
-        "club_id": "2497",
-        "club_name": "Real Oviedo S.A.D.",
-        "tm_url_slug": "real-oviedo",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:51:51+00:00",
-        "squad_count": 26,
-        "loans_count": 5
+        "status": "done"
       },
       {
         "club_id": "681",
         "club_name": "Real Sociedad de F\u00fatbol S.A.D.",
         "tm_url_slug": "real-sociedad-san-sebastian",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:51:57+00:00",
-        "squad_count": 25,
-        "loans_count": 4
+        "status": "done"
       },
       {
         "club_id": "714",
         "club_name": "Reial Club Deportiu Espanyol de Barcelona S.A.D.",
         "tm_url_slug": "espanyol-barcelona",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:52:02+00:00",
-        "squad_count": 24,
-        "loans_count": 9
+        "status": "done"
       },
       {
         "club_id": "368",
         "club_name": "Sevilla F\u00fatbol Club S.A.D.",
         "tm_url_slug": "fc-sevilla",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:52:09+00:00",
-        "squad_count": 28,
-        "loans_count": 3
+        "status": "done"
       },
       {
         "club_id": "1049",
         "club_name": "Valencia Club de F\u00fatbol S. A. D.",
         "tm_url_slug": "fc-valencia",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:52:14+00:00",
-        "squad_count": 27,
-        "loans_count": 4
+        "status": "done"
       },
       {
         "club_id": "1050",
         "club_name": "Villarreal Club de F\u00fatbol S.A.D.",
         "tm_url_slug": "fc-villarreal",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:52:20+00:00",
-        "squad_count": 27,
-        "loans_count": 5
+        "status": "done"
       }
     ],
     "IT1": [
       {
+        "club_id": "2919",
+        "club_name": "AC Monza",
+        "tm_url_slug": "ac-monza",
+        "status": "done",
+        "scraped_at": "2026-06-03T13:55:34+00:00",
+        "squad_count": 28,
+        "loans_count": 5
+      },
+      {
         "club_id": "430",
         "club_name": "Associazione Calcio Fiorentina",
         "tm_url_slug": "ac-florenz",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:52:26+00:00",
-        "squad_count": 27,
-        "loans_count": 25
+        "status": "done"
       },
       {
         "club_id": "5",
         "club_name": "Associazione Calcio Milan",
         "tm_url_slug": "ac-mailand",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:52:33+00:00",
-        "squad_count": 23,
-        "loans_count": 9
+        "status": "done"
       },
       {
         "club_id": "12",
         "club_name": "Associazione Sportiva Roma",
         "tm_url_slug": "as-rom",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:52:39+00:00",
-        "squad_count": 27,
-        "loans_count": 10
+        "status": "done"
       },
       {
         "club_id": "800",
         "club_name": "Atalanta Bergamasca Calcio S.p.a.",
         "tm_url_slug": "atalanta-bergamo",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:52:45+00:00",
-        "squad_count": 24,
-        "loans_count": 6
+        "status": "done"
       },
       {
         "club_id": "1025",
         "club_name": "Bologna Football Club 1909",
         "tm_url_slug": "fc-bologna",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:52:51+00:00",
-        "squad_count": 27,
-        "loans_count": 22
+        "status": "done"
       },
       {
         "club_id": "1390",
         "club_name": "Cagliari Calcio",
         "tm_url_slug": "cagliari-calcio",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:52:59+00:00",
-        "squad_count": 29,
-        "loans_count": 11
+        "status": "done"
       },
       {
         "club_id": "1047",
         "club_name": "Calcio Como",
         "tm_url_slug": "como-1907",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:53:05+00:00",
-        "squad_count": 27,
-        "loans_count": 19
+        "status": "done"
       },
       {
         "club_id": "46",
         "club_name": "Football Club Internazionale Milano S.p.A.",
         "tm_url_slug": "inter-mailand",
+        "status": "done"
+      },
+      {
+        "club_id": "8970",
+        "club_name": "Frosinone Calcio",
+        "tm_url_slug": "frosinone-calcio",
         "status": "done",
-        "scraped_at": "2026-06-03T12:53:11+00:00",
-        "squad_count": 24,
-        "loans_count": 7
+        "scraped_at": "2026-06-03T13:55:41+00:00",
+        "squad_count": 30,
+        "loans_count": 2
       },
       {
         "club_id": "252",
         "club_name": "Genoa Cricket and Football Club",
         "tm_url_slug": "genua-cfc",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:53:18+00:00",
-        "squad_count": 26,
-        "loans_count": 18
+        "status": "done"
       },
       {
         "club_id": "506",
         "club_name": "Juventus Football Club",
         "tm_url_slug": "juventus-turin",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:53:23+00:00",
-        "squad_count": 25,
-        "loans_count": 6
+        "status": "done"
       },
       {
         "club_id": "130",
         "club_name": "Parma Calcio 1913",
         "tm_url_slug": "parma-calcio-1913",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:53:30+00:00",
-        "squad_count": 25,
-        "loans_count": 11
-      },
-      {
-        "club_id": "4172",
-        "club_name": "Pisa Sporting Club",
-        "tm_url_slug": "ac-pisa-1909",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:53:36+00:00",
-        "squad_count": 29,
-        "loans_count": 23
+        "status": "done"
       },
       {
         "club_id": "6195",
         "club_name": "Societ\u00e0 Sportiva Calcio Napoli",
         "tm_url_slug": "ssc-neapel",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:53:43+00:00",
-        "squad_count": 26,
-        "loans_count": 23
+        "status": "done"
       },
       {
         "club_id": "398",
         "club_name": "Societ\u00e0 Sportiva Lazio S.p.A.",
         "tm_url_slug": "lazio-rom",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:53:52+00:00",
-        "squad_count": 28,
-        "loans_count": 9
+        "status": "done"
       },
       {
         "club_id": "416",
         "club_name": "Torino Calcio",
         "tm_url_slug": "fc-turin",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:53:58+00:00",
-        "squad_count": 30,
-        "loans_count": 18
+        "status": "done"
       },
       {
         "club_id": "410",
         "club_name": "Udinese Calcio",
         "tm_url_slug": "udinese-calcio",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:54:04+00:00",
-        "squad_count": 26,
-        "loans_count": 14
-      },
-      {
-        "club_id": "2239",
-        "club_name": "Unione Sportiva Cremonese S.p.A.",
-        "tm_url_slug": "us-cremonese",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:54:12+00:00",
-        "squad_count": 27,
-        "loans_count": 25
+        "status": "done"
       },
       {
         "club_id": "1005",
         "club_name": "Unione Sportiva Lecce",
         "tm_url_slug": "us-lecce",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:54:18+00:00",
-        "squad_count": 27,
-        "loans_count": 14
+        "status": "done"
       },
       {
         "club_id": "6574",
         "club_name": "Unione Sportiva Sassuolo Calcio",
         "tm_url_slug": "us-sassuolo",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:54:26+00:00",
-        "squad_count": 29,
-        "loans_count": 25
+        "status": "done"
       },
       {
-        "club_id": "276",
-        "club_name": "Verona Hellas Football Club",
-        "tm_url_slug": "hellas-verona",
+        "club_id": "607",
+        "club_name": "Venezia FC",
+        "tm_url_slug": "venezia-fc",
         "status": "done",
-        "scraped_at": "2026-06-03T12:54:32+00:00",
-        "squad_count": 30,
-        "loans_count": 20
+        "scraped_at": "2026-06-03T13:55:47+00:00",
+        "squad_count": 29,
+        "loans_count": 17
       }
     ],
     "FR1": [
@@ -770,163 +527,109 @@
         "club_id": "1420",
         "club_name": "Angers Sporting Club de l'Ouest",
         "tm_url_slug": "sco-angers",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:54:38+00:00",
-        "squad_count": 24,
-        "loans_count": 1
+        "status": "done"
       },
       {
         "club_id": "290",
         "club_name": "Association de la Jeunesse auxerroise",
         "tm_url_slug": "aj-auxerre",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:54:44+00:00",
-        "squad_count": 29,
-        "loans_count": 4
+        "status": "done"
       },
       {
         "club_id": "162",
         "club_name": "Association sportive de Monaco Football Club",
         "tm_url_slug": "as-monaco",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:54:49+00:00",
-        "squad_count": 28,
-        "loans_count": 3
+        "status": "done"
+      },
+      {
+        "club_id": "1095",
+        "club_name": "ESTAC Troyes",
+        "tm_url_slug": "es-troyes-ac",
+        "status": "done"
       },
       {
         "club_id": "1158",
         "club_name": "Football Club Lorient-Bretagne Sud",
         "tm_url_slug": "fc-lorient",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:54:55+00:00",
-        "squad_count": 25,
-        "loans_count": 5
-      },
-      {
-        "club_id": "347",
-        "club_name": "Football Club de Metz",
-        "tm_url_slug": "fc-metz",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:55:02+00:00",
-        "squad_count": 27,
-        "loans_count": 5
-      },
-      {
-        "club_id": "995",
-        "club_name": "Football Club de Nantes",
-        "tm_url_slug": "fc-nantes",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:55:08+00:00",
-        "squad_count": 29,
-        "loans_count": 5
+        "status": "done"
       },
       {
         "club_id": "738",
         "club_name": "Le Havre Athletic Club",
         "tm_url_slug": "ac-le-havre",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:55:15+00:00",
-        "squad_count": 28,
-        "loans_count": 3
+        "status": "done"
+      },
+      {
+        "club_id": "1164",
+        "club_name": "Le Mans FC",
+        "tm_url_slug": "le-mans-fc",
+        "status": "done"
       },
       {
         "club_id": "1082",
         "club_name": "Lille Olympique Sporting Club",
         "tm_url_slug": "losc-lille",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:55:21+00:00",
-        "squad_count": 28,
-        "loans_count": 7
+        "status": "done"
       },
       {
         "club_id": "417",
         "club_name": "Olympique Gymnaste Club Nice C\u00f4te d'Azur",
         "tm_url_slug": "ogc-nizza",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:55:26+00:00",
-        "squad_count": 29,
-        "loans_count": 9
+        "status": "done"
       },
       {
         "club_id": "1041",
         "club_name": "Olympique Lyonnais",
         "tm_url_slug": "olympique-lyon",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:55:32+00:00",
-        "squad_count": 29,
-        "loans_count": 7
+        "status": "done"
       },
       {
         "club_id": "244",
         "club_name": "Olympique de Marseille",
         "tm_url_slug": "olympique-marseille",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:55:38+00:00",
-        "squad_count": 25,
-        "loans_count": 6
+        "status": "done"
       },
       {
         "club_id": "10004",
         "club_name": "Paris Football Club",
         "tm_url_slug": "paris-fc",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:55:44+00:00",
-        "squad_count": 31,
-        "loans_count": 5
+        "status": "done"
       },
       {
         "club_id": "583",
         "club_name": "Paris Saint-Germain Football Club",
         "tm_url_slug": "fc-paris-saint-germain",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:55:49+00:00",
-        "squad_count": 24,
-        "loans_count": 6
+        "status": "done"
       },
       {
         "club_id": "826",
         "club_name": "Racing Club de Lens",
         "tm_url_slug": "rc-lens",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:55:55+00:00",
-        "squad_count": 29,
-        "loans_count": 11
+        "status": "done"
       },
       {
         "club_id": "667",
         "club_name": "Racing Club de Strasbourg Alsace",
         "tm_url_slug": "rc-strassburg-alsace",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:56:01+00:00",
-        "squad_count": 26,
-        "loans_count": 11
+        "status": "done"
       },
       {
         "club_id": "273",
         "club_name": "Stade Rennais Football Club",
         "tm_url_slug": "fc-stade-rennes",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:56:07+00:00",
-        "squad_count": 23,
-        "loans_count": 9
+        "status": "done"
       },
       {
         "club_id": "3911",
         "club_name": "Stade brestois 29",
         "tm_url_slug": "stade-brest-29",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:56:12+00:00",
-        "squad_count": 23,
-        "loans_count": 2
+        "status": "done"
       },
       {
         "club_id": "415",
         "club_name": "Toulouse Football Club",
         "tm_url_slug": "fc-toulouse",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:56:19+00:00",
-        "squad_count": 24,
-        "loans_count": 6
+        "status": "done"
       }
     ],
     "FR2": [
@@ -934,163 +637,109 @@
         "club_id": "1159",
         "club_name": "AS Nancy-Lorraine",
         "tm_url_slug": "as-nancy-lorraine",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:56:25+00:00",
-        "squad_count": 31,
-        "loans_count": 3
+        "status": "done"
       },
       {
         "club_id": "618",
         "club_name": "AS Saint-\u00c9tienne",
         "tm_url_slug": "as-saint-etienne",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:56:31+00:00",
-        "squad_count": 29,
-        "loans_count": 1
+        "status": "done"
       },
       {
         "club_id": "1416",
         "club_name": "Amiens SC",
         "tm_url_slug": "amiens-sc",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:56:36+00:00",
-        "squad_count": 28,
-        "loans_count": 1
+        "status": "done"
       },
       {
         "club_id": "3524",
         "club_name": "Clermont Foot 63",
         "tm_url_slug": "clermont-foot-63",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:56:42+00:00",
-        "squad_count": 28,
-        "loans_count": 3
+        "status": "done"
       },
       {
         "club_id": "855",
         "club_name": "EA Guingamp",
         "tm_url_slug": "ea-guingamp",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:56:47+00:00",
-        "squad_count": 25,
-        "loans_count": 0
-      },
-      {
-        "club_id": "1095",
-        "club_name": "ESTAC Troyes",
-        "tm_url_slug": "es-troyes-ac",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:56:53+00:00",
-        "squad_count": 29,
-        "loans_count": 2
+        "status": "done"
       },
       {
         "club_id": "30204",
         "club_name": "FC Annecy",
         "tm_url_slug": "fc-annecy",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:56:58+00:00",
-        "squad_count": 31,
-        "loans_count": 2
+        "status": "done"
+      },
+      {
+        "club_id": "347",
+        "club_name": "Football Club de Metz",
+        "tm_url_slug": "fc-metz",
+        "status": "done"
+      },
+      {
+        "club_id": "995",
+        "club_name": "Football Club de Nantes",
+        "tm_url_slug": "fc-nantes",
+        "status": "done"
       },
       {
         "club_id": "1290",
         "club_name": "Grenoble Foot 38",
         "tm_url_slug": "grenoble-foot-38",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:57:04+00:00",
-        "squad_count": 24,
-        "loans_count": 2
-      },
-      {
-        "club_id": "1164",
-        "club_name": "Le Mans FC",
-        "tm_url_slug": "le-mans-fc",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:57:10+00:00",
-        "squad_count": 27,
-        "loans_count": 1
+        "status": "done"
       },
       {
         "club_id": "969",
         "club_name": "Montpellier HSC",
         "tm_url_slug": "montpellier-hsc",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:57:16+00:00",
-        "squad_count": 23,
-        "loans_count": 2
+        "status": "done"
       },
       {
         "club_id": "3166",
         "club_name": "Pau FC",
         "tm_url_slug": "pau-fc",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:57:22+00:00",
-        "squad_count": 23,
-        "loans_count": 0
+        "status": "done"
       },
       {
         "club_id": "1154",
         "club_name": "Red Star FC",
         "tm_url_slug": "red-star-fc",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:57:28+00:00",
-        "squad_count": 25,
-        "loans_count": 1
+        "status": "done"
       },
       {
         "club_id": "11273",
         "club_name": "Rodez AF",
         "tm_url_slug": "rodez-af",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:57:33+00:00",
-        "squad_count": 26,
-        "loans_count": 2
+        "status": "done"
       },
       {
         "club_id": "595",
         "club_name": "SC Bastia",
         "tm_url_slug": "sc-bastia",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:57:39+00:00",
-        "squad_count": 29,
-        "loans_count": 3
+        "status": "done"
       },
       {
         "club_id": "1080",
         "club_name": "Stade Lavallois",
         "tm_url_slug": "stade-lavallois",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:57:45+00:00",
-        "squad_count": 26,
-        "loans_count": 3
+        "status": "done"
       },
       {
         "club_id": "1421",
         "club_name": "Stade Reims",
         "tm_url_slug": "stade-reims",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:57:51+00:00",
-        "squad_count": 24,
-        "loans_count": 8
+        "status": "done"
       },
       {
         "club_id": "7042",
         "club_name": "US Boulogne",
         "tm_url_slug": "us-boulogne",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:57:57+00:00",
-        "squad_count": 27,
-        "loans_count": 6
+        "status": "done"
       },
       {
         "club_id": "9202",
         "club_name": "USL Dunkerque",
         "tm_url_slug": "usl-dunkerque",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:58:03+00:00",
-        "squad_count": 27,
-        "loans_count": 0
+        "status": "done"
       }
     ],
     "L1": [
@@ -1098,163 +747,118 @@
         "club_id": "39",
         "club_name": "1. Fu\u00dfball- und Sportverein Mainz 05",
         "tm_url_slug": "1-fsv-mainz-05",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:58:08+00:00",
-        "squad_count": 31,
-        "loans_count": 6
+        "status": "done"
       },
       {
         "club_id": "3",
         "club_name": "1. Fu\u00dfball-Club K\u00f6ln",
         "tm_url_slug": "1-fc-koln",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:58:14+00:00",
-        "squad_count": 30,
-        "loans_count": 7
-      },
-      {
-        "club_id": "2036",
-        "club_name": "1. Fu\u00dfballclub Heidenheim 1846",
-        "tm_url_slug": "1-fc-heidenheim-1846",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:58:20+00:00",
-        "squad_count": 29,
-        "loans_count": 4
+        "status": "done"
       },
       {
         "club_id": "89",
         "club_name": "1. Fu\u00dfballclub Union Berlin",
         "tm_url_slug": "1-fc-union-berlin",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:58:25+00:00",
-        "squad_count": 26,
-        "loans_count": 6
+        "status": "done"
       },
       {
         "club_id": "15",
         "club_name": "Bayer 04 Leverkusen Fu\u00dfball",
         "tm_url_slug": "bayer-04-leverkusen",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:58:30+00:00",
-        "squad_count": 27,
-        "loans_count": 8
+        "status": "done"
       },
       {
         "club_id": "16",
         "club_name": "Borussia Dortmund",
         "tm_url_slug": "borussia-dortmund",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:58:35+00:00",
-        "squad_count": 26,
-        "loans_count": 4
+        "status": "done"
       },
       {
         "club_id": "18",
         "club_name": "Borussia Verein f\u00fcr Leibes\u00fcbungen 1900 M\u00f6nchengladbach",
         "tm_url_slug": "borussia-monchengladbach",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:58:40+00:00",
-        "squad_count": 28,
-        "loans_count": 5
+        "status": "done"
       },
       {
         "club_id": "24",
         "club_name": "Eintracht Frankfurt Fu\u00dfball AG",
         "tm_url_slug": "eintracht-frankfurt",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:58:46+00:00",
-        "squad_count": 29,
-        "loans_count": 8
+        "status": "done"
       },
       {
         "club_id": "27",
         "club_name": "FC Bayern M\u00fcnchen",
         "tm_url_slug": "fc-bayern-munchen",
+        "status": "done"
+      },
+      {
+        "club_id": "33",
+        "club_name": "FC Schalke 04",
+        "tm_url_slug": "fc-schalke-04",
         "status": "done",
-        "scraped_at": "2026-06-03T12:58:51+00:00",
-        "squad_count": 25,
-        "loans_count": 11
+        "scraped_at": "2026-06-03T13:56:01+00:00",
+        "squad_count": 33,
+        "loans_count": 5
       },
       {
         "club_id": "167",
         "club_name": "Fu\u00dfball-Club Augsburg 1907",
         "tm_url_slug": "fc-augsburg",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:58:56+00:00",
-        "squad_count": 29,
-        "loans_count": 10
-      },
-      {
-        "club_id": "35",
-        "club_name": "Fu\u00dfball-Club St. Pauli von 1910",
-        "tm_url_slug": "fc-st-pauli",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:59:02+00:00",
-        "squad_count": 30,
-        "loans_count": 2
+        "status": "done"
       },
       {
         "club_id": "41",
         "club_name": "Hamburger Sport Verein",
         "tm_url_slug": "hamburger-sv",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:59:07+00:00",
-        "squad_count": 30,
-        "loans_count": 5
+        "status": "done"
       },
       {
         "club_id": "23826",
         "club_name": "RasenBallsport Leipzig",
         "tm_url_slug": "rasenballsport-leipzig",
+        "status": "done"
+      },
+      {
+        "club_id": "127",
+        "club_name": "SC Paderborn 07",
+        "tm_url_slug": "sc-paderborn-07",
         "status": "done",
-        "scraped_at": "2026-06-03T12:59:13+00:00",
-        "squad_count": 30,
-        "loans_count": 8
+        "scraped_at": "2026-06-03T13:56:07+00:00",
+        "squad_count": 26,
+        "loans_count": 2
+      },
+      {
+        "club_id": "64",
+        "club_name": "SV 07 Elversberg",
+        "tm_url_slug": "sv-07-elversberg",
+        "status": "done",
+        "scraped_at": "2026-06-03T13:56:13+00:00",
+        "squad_count": 28,
+        "loans_count": 2
       },
       {
         "club_id": "60",
         "club_name": "Sport-Club Freiburg",
         "tm_url_slug": "sc-freiburg",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:59:18+00:00",
-        "squad_count": 25,
-        "loans_count": 6
+        "status": "done"
       },
       {
         "club_id": "86",
         "club_name": "Sportverein Werder Bremen von 1899",
         "tm_url_slug": "sv-werder-bremen",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:59:25+00:00",
-        "squad_count": 30,
-        "loans_count": 3
+        "status": "done"
       },
       {
         "club_id": "533",
         "club_name": "Turn- und Sportgemeinschaft 1899 Hoffenheim Fu\u00dfball-Spielbetriebs",
         "tm_url_slug": "tsg-1899-hoffenheim",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:59:31+00:00",
-        "squad_count": 29,
-        "loans_count": 12
+        "status": "done"
       },
       {
         "club_id": "79",
         "club_name": "Verein f\u00fcr Bewegungsspiele Stuttgart 1893",
         "tm_url_slug": "vfb-stuttgart",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:59:36+00:00",
-        "squad_count": 30,
-        "loans_count": 4
-      },
-      {
-        "club_id": "82",
-        "club_name": "Verein f\u00fcr Leibes\u00fcbungen Wolfsburg",
-        "tm_url_slug": "vfl-wolfsburg",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:59:42+00:00",
-        "squad_count": 33,
-        "loans_count": 7
+        "status": "done"
       }
     ],
     "PO1": [
@@ -1262,163 +866,109 @@
         "club_id": "110302",
         "club_name": "AVS Futebol SAD",
         "tm_url_slug": "avs-futebol-sad",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:59:47+00:00",
-        "squad_count": 25,
-        "loans_count": 4
+        "status": "done"
       },
       {
         "club_id": "3268",
         "club_name": "Casa Pia Atl\u00e9tico Clube",
         "tm_url_slug": "casa-pia-ac",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:59:53+00:00",
-        "squad_count": 28,
-        "loans_count": 5
+        "status": "done"
       },
       {
         "club_id": "2431",
         "club_name": "Club Football Estrela da Amadora",
         "tm_url_slug": "cf-estrela-amadora-sad",
-        "status": "done",
-        "scraped_at": "2026-06-03T12:59:58+00:00",
-        "squad_count": 31,
-        "loans_count": 6
+        "status": "done"
       },
       {
         "club_id": "982",
         "club_name": "Clube Desportivo Nacional",
         "tm_url_slug": "cd-nacional",
-        "status": "done",
-        "scraped_at": "2026-06-03T13:00:04+00:00",
-        "squad_count": 30,
-        "loans_count": 2
+        "status": "done"
       },
       {
         "club_id": "2423",
         "club_name": "Clube Desportivo Santa Clara",
         "tm_url_slug": "cd-santa-clara",
-        "status": "done",
-        "scraped_at": "2026-06-03T13:00:10+00:00",
-        "squad_count": 28,
-        "loans_count": 17
+        "status": "done"
       },
       {
         "club_id": "7179",
         "club_name": "Clube Desportivo de Tondela",
         "tm_url_slug": "cd-tondela",
-        "status": "done",
-        "scraped_at": "2026-06-03T13:00:16+00:00",
-        "squad_count": 26,
-        "loans_count": 4
+        "status": "done"
       },
       {
         "club_id": "2521",
         "club_name": "Futebol Clube de Alverca",
         "tm_url_slug": "fc-alverca",
-        "status": "done",
-        "scraped_at": "2026-06-03T13:00:22+00:00",
-        "squad_count": 29,
-        "loans_count": 3
+        "status": "done"
       },
       {
         "club_id": "8024",
         "club_name": "Futebol Clube de Arouca",
         "tm_url_slug": "fc-arouca",
-        "status": "done",
-        "scraped_at": "2026-06-03T13:00:28+00:00",
-        "squad_count": 27,
-        "loans_count": 4
+        "status": "done"
       },
       {
         "club_id": "3329",
         "club_name": "Futebol Clube de Famalic\u00e3o",
         "tm_url_slug": "fc-famalicao",
-        "status": "done",
-        "scraped_at": "2026-06-03T13:00:33+00:00",
-        "squad_count": 25,
-        "loans_count": 2
+        "status": "done"
       },
       {
         "club_id": "720",
         "club_name": "Futebol Clube do Porto",
         "tm_url_slug": "fc-porto",
-        "status": "done",
-        "scraped_at": "2026-06-03T13:00:39+00:00",
-        "squad_count": 27,
-        "loans_count": 6
+        "status": "done"
       },
       {
         "club_id": "2424",
         "club_name": "Gil Vicente Futebol Clube",
         "tm_url_slug": "gil-vicente-fc",
-        "status": "done",
-        "scraped_at": "2026-06-03T13:00:45+00:00",
-        "squad_count": 28,
-        "loans_count": 2
+        "status": "done"
       },
       {
         "club_id": "1465",
         "club_name": "Grupo Desportivo Estoril Praia",
         "tm_url_slug": "gd-estoril-praia",
-        "status": "done",
-        "scraped_at": "2026-06-03T13:00:50+00:00",
-        "squad_count": 24,
-        "loans_count": 7
+        "status": "done"
       },
       {
         "club_id": "979",
         "club_name": "Moreirense Futebol Clube",
         "tm_url_slug": "moreirense-fc",
-        "status": "done",
-        "scraped_at": "2026-06-03T13:00:56+00:00",
-        "squad_count": 26,
-        "loans_count": 3
+        "status": "done"
       },
       {
         "club_id": "2425",
         "club_name": "Rio Ave Futebol Clube",
         "tm_url_slug": "rio-ave-fc",
-        "status": "done",
-        "scraped_at": "2026-06-03T13:01:01+00:00",
-        "squad_count": 29,
-        "loans_count": 2
+        "status": "done"
       },
       {
         "club_id": "294",
         "club_name": "Sport Lisboa e Benfica",
         "tm_url_slug": "benfica-lissabon",
-        "status": "done",
-        "scraped_at": "2026-06-03T13:01:07+00:00",
-        "squad_count": 28,
-        "loans_count": 3
+        "status": "done"
       },
       {
         "club_id": "1075",
         "club_name": "Sporting Clube de Braga",
         "tm_url_slug": "sc-braga",
-        "status": "done",
-        "scraped_at": "2026-06-03T13:01:14+00:00",
-        "squad_count": 29,
-        "loans_count": 7
+        "status": "done"
       },
       {
         "club_id": "336",
         "club_name": "Sporting Clube de Portugal",
         "tm_url_slug": "sporting-lissabon",
-        "status": "done",
-        "scraped_at": "2026-06-03T13:01:19+00:00",
-        "squad_count": 26,
-        "loans_count": 6
+        "status": "done"
       },
       {
         "club_id": "2420",
         "club_name": "Vit\u00f3ria Sport Clube",
         "tm_url_slug": "vitoria-guimaraes-sc",
-        "status": "done",
-        "scraped_at": "2026-06-03T13:01:24+00:00",
-        "squad_count": 26,
-        "loans_count": 4
+        "status": "done"
       }
     ],
     "NL1": [
@@ -1426,163 +976,109 @@
         "club_id": "610",
         "club_name": "AFC Ajax Amsterdam",
         "tm_url_slug": "ajax-amsterdam",
-        "status": "done",
-        "scraped_at": "2026-06-03T13:01:29+00:00",
-        "squad_count": 27,
-        "loans_count": 5
+        "status": "done"
       },
       {
         "club_id": "1090",
         "club_name": "Alkmaar Zaanstreek",
         "tm_url_slug": "az-alkmaar",
-        "status": "done",
-        "scraped_at": "2026-06-03T13:01:34+00:00",
-        "squad_count": 29,
-        "loans_count": 6
+        "status": "done"
       },
       {
         "club_id": "383",
         "club_name": "Eindhovense Voetbalvereniging Philips Sport Vereniging",
         "tm_url_slug": "psv-eindhoven",
-        "status": "done",
-        "scraped_at": "2026-06-03T13:01:39+00:00",
-        "squad_count": 25,
-        "loans_count": 4
+        "status": "done"
       },
       {
         "club_id": "798",
         "club_name": "Excelsior Rotterdam",
         "tm_url_slug": "sbv-excelsior-rotterdam",
-        "status": "done",
-        "scraped_at": "2026-06-03T13:01:45+00:00",
-        "squad_count": 24,
-        "loans_count": 2
+        "status": "done"
       },
       {
         "club_id": "234",
         "club_name": "Feyenoord Rotterdam",
         "tm_url_slug": "feyenoord-rotterdam",
-        "status": "done",
-        "scraped_at": "2026-06-03T13:01:51+00:00",
-        "squad_count": 34,
-        "loans_count": 10
+        "status": "done"
       },
       {
         "club_id": "202",
         "club_name": "Football Club Groningen",
         "tm_url_slug": "fc-groningen",
-        "status": "done",
-        "scraped_at": "2026-06-03T13:01:56+00:00",
-        "squad_count": 27,
-        "loans_count": 3
+        "status": "done"
       },
       {
         "club_id": "317",
         "club_name": "Football Club Twente",
         "tm_url_slug": "fc-twente-enschede",
-        "status": "done",
-        "scraped_at": "2026-06-03T13:02:02+00:00",
-        "squad_count": 26,
-        "loans_count": 7
+        "status": "done"
       },
       {
         "club_id": "200",
         "club_name": "Football Club Utrecht",
         "tm_url_slug": "fc-utrecht",
-        "status": "done",
-        "scraped_at": "2026-06-03T13:02:07+00:00",
-        "squad_count": 28,
-        "loans_count": 5
+        "status": "done"
       },
       {
         "club_id": "724",
         "club_name": "Football Club Volendam",
         "tm_url_slug": "fc-volendam",
-        "status": "done",
-        "scraped_at": "2026-06-03T13:02:13+00:00",
-        "squad_count": 30,
-        "loans_count": 2
+        "status": "done"
       },
       {
         "club_id": "385",
         "club_name": "Fortuna Sittardia Combinatie",
         "tm_url_slug": "fortuna-sittard",
-        "status": "done",
-        "scraped_at": "2026-06-03T13:02:18+00:00",
-        "squad_count": 28,
-        "loans_count": 1
+        "status": "done"
       },
       {
         "club_id": "1435",
         "club_name": "Go Ahead Eagles",
         "tm_url_slug": "go-ahead-eagles-deventer",
-        "status": "done",
-        "scraped_at": "2026-06-03T13:02:24+00:00",
-        "squad_count": 29,
-        "loans_count": 2
+        "status": "done"
       },
       {
         "club_id": "1304",
         "club_name": "Heracles Almelo",
         "tm_url_slug": "heracles-almelo",
-        "status": "done",
-        "scraped_at": "2026-06-03T13:02:30+00:00",
-        "squad_count": 31,
-        "loans_count": 4
+        "status": "done"
       },
       {
         "club_id": "467",
         "club_name": "Nijmegen Eendracht Combinatie",
         "tm_url_slug": "nec-nijmegen",
-        "status": "done",
-        "scraped_at": "2026-06-03T13:02:35+00:00",
-        "squad_count": 26,
-        "loans_count": 5
+        "status": "done"
       },
       {
         "club_id": "132",
         "club_name": "Nooit Opgeven Altijd Doorzetten Aangenaam Door Vermaak En Nuttig Door Ontspanning Combinatie Breda",
         "tm_url_slug": "nac-breda",
-        "status": "done",
-        "scraped_at": "2026-06-03T13:02:41+00:00",
-        "squad_count": 28,
-        "loans_count": 2
+        "status": "done"
       },
       {
         "club_id": "1269",
         "club_name": "Prins Hendrik Ende Desespereert Nimmer Combinatie Zwolle",
         "tm_url_slug": "pec-zwolle",
-        "status": "done",
-        "scraped_at": "2026-06-03T13:02:46+00:00",
-        "squad_count": 27,
-        "loans_count": 1
+        "status": "done"
       },
       {
         "club_id": "468",
         "club_name": "Sparta Rotterdam",
         "tm_url_slug": "sparta-rotterdam",
-        "status": "done",
-        "scraped_at": "2026-06-03T13:02:51+00:00",
-        "squad_count": 26,
-        "loans_count": 5
+        "status": "done"
       },
       {
         "club_id": "306",
         "club_name": "Sportclub Heerenveen",
         "tm_url_slug": "sc-heerenveen",
-        "status": "done",
-        "scraped_at": "2026-06-03T13:02:58+00:00",
-        "squad_count": 26,
-        "loans_count": 0
+        "status": "done"
       },
       {
         "club_id": "1434",
         "club_name": "Sportclub Telstar",
         "tm_url_slug": "sc-telstar",
-        "status": "done",
-        "scraped_at": "2026-06-03T13:03:03+00:00",
-        "squad_count": 27,
-        "loans_count": 0
+        "status": "done"
       }
     ],
     "BE1": [
@@ -1590,158 +1086,641 @@
         "club_id": "520",
         "club_name": "Cercle Brugge Koninklijke Sportvereniging",
         "tm_url_slug": "cercle-brugge",
-        "status": "done",
-        "scraped_at": "2026-06-03T13:03:09+00:00",
-        "squad_count": 26,
-        "loans_count": 4
+        "status": "done"
       },
       {
         "club_id": "2282",
         "club_name": "Club Brugge Koninklijke Voetbalvereniging",
         "tm_url_slug": "fc-brugge",
-        "status": "done",
-        "scraped_at": "2026-06-03T13:03:14+00:00",
-        "squad_count": 28,
-        "loans_count": 1
+        "status": "done"
       },
       {
         "club_id": "9010",
         "club_name": "FC Verbroedering Denderhoutem Denderleeuw Eendracht Hekelgem",
         "tm_url_slug": "fcv-dender-eh",
-        "status": "done",
-        "scraped_at": "2026-06-03T13:03:19+00:00",
-        "squad_count": 28,
-        "loans_count": 1
+        "status": "done"
       },
       {
         "club_id": "157",
         "club_name": "Koninklijke Atletiek Associatie Gent",
         "tm_url_slug": "kaa-gent",
-        "status": "done",
-        "scraped_at": "2026-06-03T13:03:25+00:00",
-        "squad_count": 29,
-        "loans_count": 5
+        "status": "done"
       },
       {
         "club_id": "1184",
         "club_name": "Koninklijke Racing Club Genk",
         "tm_url_slug": "krc-genk",
-        "status": "done",
-        "scraped_at": "2026-06-03T13:03:31+00:00",
-        "squad_count": 27,
-        "loans_count": 0
+        "status": "done"
       },
       {
         "club_id": "475",
         "club_name": "Koninklijke Sint-Truidense Voetbalvereniging",
         "tm_url_slug": "vv-st-truiden",
-        "status": "done",
-        "scraped_at": "2026-06-03T13:03:37+00:00",
-        "squad_count": 26,
-        "loans_count": 2
+        "status": "done"
       },
       {
         "club_id": "968",
         "club_name": "Koninklijke Voetbal Club Westerlo",
         "tm_url_slug": "kvc-westerlo",
-        "status": "done",
-        "scraped_at": "2026-06-03T13:03:43+00:00",
-        "squad_count": 29,
-        "loans_count": 3
+        "status": "done"
       },
       {
         "club_id": "2727",
         "club_name": "Oud-Heverlee Leuven",
         "tm_url_slug": "oud-heverlee-leuven",
-        "status": "done",
-        "scraped_at": "2026-06-03T13:03:48+00:00",
-        "squad_count": 28,
-        "loans_count": 2
+        "status": "done"
       },
       {
         "club_id": "3901",
         "club_name": "RAAL La Louvi\u00e8re",
         "tm_url_slug": "raal-la-louviere",
-        "status": "done",
-        "scraped_at": "2026-06-03T13:03:55+00:00",
-        "squad_count": 25,
-        "loans_count": 4
+        "status": "done"
       },
       {
         "club_id": "1096",
         "club_name": "Royal Antwerp Football Club",
         "tm_url_slug": "royal-antwerpen-fc",
-        "status": "done",
-        "scraped_at": "2026-06-03T13:04:00+00:00",
-        "squad_count": 31,
-        "loans_count": 0
+        "status": "done"
       },
       {
         "club_id": "172",
         "club_name": "Royal Charleroi Sporting Club",
         "tm_url_slug": "rsc-charleroi",
-        "status": "done",
-        "scraped_at": "2026-06-03T13:04:06+00:00",
-        "squad_count": 27,
-        "loans_count": 7
+        "status": "done"
       },
       {
         "club_id": "58",
         "club_name": "Royal Sporting Club Anderlecht",
         "tm_url_slug": "rsc-anderlecht",
-        "status": "done",
-        "scraped_at": "2026-06-03T13:04:13+00:00",
-        "squad_count": 30,
-        "loans_count": 5
+        "status": "done"
       },
       {
         "club_id": "3057",
         "club_name": "Royal Standard Club de Li\u00e8ge",
         "tm_url_slug": "standard-luttich",
-        "status": "done",
-        "scraped_at": "2026-06-03T13:04:19+00:00",
-        "squad_count": 31,
-        "loans_count": 2
+        "status": "done"
       },
       {
         "club_id": "3948",
         "club_name": "Royale Union Saint-Gilloise",
         "tm_url_slug": "royale-union-saint-gilloise",
-        "status": "done",
-        "scraped_at": "2026-06-03T13:04:48+00:00",
-        "squad_count": 27,
-        "loans_count": 1
+        "status": "done"
       },
       {
         "club_id": "3508",
         "club_name": "Sportvereniging Zulte Waregem",
         "tm_url_slug": "sv-zulte-waregem",
-        "status": "done",
-        "scraped_at": "2026-06-03T13:05:18+00:00",
-        "squad_count": 31,
-        "loans_count": 3
+        "status": "done"
       },
       {
         "club_id": "354",
         "club_name": "Yellow-Red Koninklijke Voetbalclub Mechelen",
         "tm_url_slug": "kv-mechelen",
+        "status": "done"
+      }
+    ],
+    "ES2": [
+      {
+        "club_id": "8568",
+        "club_name": "AD Ceuta FC",
+        "tm_url_slug": "ad-ceuta-fc",
         "status": "done",
-        "scraped_at": "2026-06-03T13:05:39+00:00",
+        "scraped_at": "2026-06-03T13:56:22+00:00",
+        "squad_count": 28,
+        "loans_count": 3
+      },
+      {
+        "club_id": "1532",
+        "club_name": "Albacete Balompi\u00e9",
+        "tm_url_slug": "albacete-balompi",
+        "status": "done",
+        "scraped_at": "2026-06-03T13:56:32+00:00",
+        "squad_count": 26,
+        "loans_count": 2
+      },
+      {
+        "club_id": "1536",
+        "club_name": "Burgos CF",
+        "tm_url_slug": "burgos-cf",
+        "status": "done",
+        "scraped_at": "2026-06-03T13:56:43+00:00",
+        "squad_count": 24,
+        "loans_count": 0
+      },
+      {
+        "club_id": "2502",
+        "club_name": "CD Castell\u00f3n",
+        "tm_url_slug": "cd-castell-n",
+        "status": "done",
+        "scraped_at": "2026-06-03T13:57:01+00:00",
+        "squad_count": 24,
+        "loans_count": 4
+      },
+      {
+        "club_id": "1244",
+        "club_name": "CD Legan\u00e9s",
+        "tm_url_slug": "cd-leganes",
+        "status": "done",
+        "scraped_at": "2026-06-03T13:57:06+00:00",
+        "squad_count": 25,
+        "loans_count": 3
+      },
+      {
+        "club_id": "13222",
+        "club_name": "CD Mirand\u00e9s",
+        "tm_url_slug": "cd-mirand-s",
+        "status": "done",
+        "scraped_at": "2026-06-03T13:57:14+00:00",
+        "squad_count": 28,
+        "loans_count": 0
+      },
+      {
+        "club_id": "4542",
+        "club_name": "Cultural Leonesa",
+        "tm_url_slug": "cultural-leonesa",
+        "status": "done",
+        "scraped_at": "2026-06-03T13:57:19+00:00",
+        "squad_count": 26,
+        "loans_count": 2
+      },
+      {
+        "club_id": "2687",
+        "club_name": "C\u00e1diz CF",
+        "tm_url_slug": "fc-cadiz",
+        "status": "done",
+        "scraped_at": "2026-06-03T13:57:27+00:00",
+        "squad_count": 29,
+        "loans_count": 7
+      },
+      {
+        "club_id": "993",
+        "club_name": "C\u00f3rdoba CF",
+        "tm_url_slug": "fc-cordoba",
+        "status": "done",
+        "scraped_at": "2026-06-03T13:57:32+00:00",
+        "squad_count": 26,
+        "loans_count": 4
+      },
+      {
+        "club_id": "10718",
+        "club_name": "FC Andorra",
+        "tm_url_slug": "fc-andorra",
+        "status": "done",
+        "scraped_at": "2026-06-03T13:57:38+00:00",
+        "squad_count": 27,
+        "loans_count": 9
+      },
+      {
+        "club_id": "12321",
+        "club_name": "Girona F\u00fatbol Club S. A. D.",
+        "tm_url_slug": "fc-girona",
+        "status": "done"
+      },
+      {
+        "club_id": "16795",
+        "club_name": "Granada CF",
+        "tm_url_slug": "fc-granada",
+        "status": "done",
+        "scraped_at": "2026-06-03T13:57:44+00:00",
+        "squad_count": 25,
+        "loans_count": 2
+      },
+      {
+        "club_id": "1084",
+        "club_name": "M\u00e1laga CF",
+        "tm_url_slug": "fc-malaga",
+        "status": "done",
+        "scraped_at": "2026-06-03T13:57:50+00:00",
+        "squad_count": 29,
+        "loans_count": 0
+      },
+      {
+        "club_id": "237",
+        "club_name": "Real Club Deportivo Mallorca S.A.D.",
+        "tm_url_slug": "rcd-mallorca",
+        "status": "done"
+      },
+      {
+        "club_id": "2497",
+        "club_name": "Real Oviedo S.A.D.",
+        "tm_url_slug": "real-oviedo",
+        "status": "done"
+      },
+      {
+        "club_id": "9899",
+        "club_name": "Real Sociedad B",
+        "tm_url_slug": "real-sociedad-b",
+        "status": "done",
+        "scraped_at": "2026-06-03T13:57:56+00:00",
+        "squad_count": 27,
+        "loans_count": 2
+      },
+      {
+        "club_id": "366",
+        "club_name": "Real Valladolid CF",
+        "tm_url_slug": "real-valladolid",
+        "status": "done",
+        "scraped_at": "2026-06-03T13:58:03+00:00",
+        "squad_count": 28,
+        "loans_count": 5
+      },
+      {
+        "club_id": "142",
+        "club_name": "Real Zaragoza",
+        "tm_url_slug": "real-saragossa",
+        "status": "done",
+        "scraped_at": "2026-06-03T13:58:08+00:00",
+        "squad_count": 32,
+        "loans_count": 4
+      },
+      {
+        "club_id": "1533",
+        "club_name": "SD Eibar",
+        "tm_url_slug": "sd-eibar",
+        "status": "done",
+        "scraped_at": "2026-06-03T13:58:14+00:00",
+        "squad_count": 23,
+        "loans_count": 4
+      },
+      {
+        "club_id": "5358",
+        "club_name": "SD Huesca",
+        "tm_url_slug": "sd-huesca",
+        "status": "done",
+        "scraped_at": "2026-06-03T13:58:19+00:00",
+        "squad_count": 27,
+        "loans_count": 4
+      },
+      {
+        "club_id": "2448",
+        "club_name": "Sporting Gij\u00f3n",
+        "tm_url_slug": "sporting-gijon",
+        "status": "done",
+        "scraped_at": "2026-06-03T13:58:25+00:00",
+        "squad_count": 25,
+        "loans_count": 1
+      },
+      {
+        "club_id": "3302",
+        "club_name": "UD Almer\u00eda",
+        "tm_url_slug": "ud-almeria",
+        "status": "done",
+        "scraped_at": "2026-06-03T13:58:31+00:00",
+        "squad_count": 27,
+        "loans_count": 9
+      },
+      {
+        "club_id": "472",
+        "club_name": "UD Las Palmas",
+        "tm_url_slug": "ud-las-palmas",
+        "status": "done",
+        "scraped_at": "2026-06-03T13:58:36+00:00",
+        "squad_count": 27,
+        "loans_count": 4
+      }
+    ],
+    "IT2": [
+      {
+        "club_id": "5621",
+        "club_name": "AC Reggiana 1919",
+        "tm_url_slug": "ac-reggiana-1919",
+        "status": "done",
+        "scraped_at": "2026-06-03T13:58:43+00:00",
+        "squad_count": 36,
+        "loans_count": 7
+      },
+      {
+        "club_id": "3037",
+        "club_name": "Calcio Padova",
+        "tm_url_slug": "calcio-padova",
+        "status": "done",
+        "scraped_at": "2026-06-03T13:58:48+00:00",
+        "squad_count": 32,
+        "loans_count": 6
+      },
+      {
+        "club_id": "4159",
+        "club_name": "Carrarese Calcio 1908",
+        "tm_url_slug": "carrarese-calcio-1908",
+        "status": "done",
+        "scraped_at": "2026-06-03T13:58:54+00:00",
         "squad_count": 29,
         "loans_count": 2
+      },
+      {
+        "club_id": "1429",
+        "club_name": "Cesena FC",
+        "tm_url_slug": "cesena-fc",
+        "status": "done",
+        "scraped_at": "2026-06-03T13:59:00+00:00",
+        "squad_count": 27,
+        "loans_count": 13
+      },
+      {
+        "club_id": "2921",
+        "club_name": "Delfino Pescara 1936",
+        "tm_url_slug": "delfino-pescara-1936",
+        "status": "done",
+        "scraped_at": "2026-06-03T13:59:06+00:00",
+        "squad_count": 30,
+        "loans_count": 8
+      },
+      {
+        "club_id": "749",
+        "club_name": "FC Empoli",
+        "tm_url_slug": "fc-empoli",
+        "status": "done",
+        "scraped_at": "2026-06-03T13:59:13+00:00",
+        "squad_count": 33,
+        "loans_count": 17
+      },
+      {
+        "club_id": "4554",
+        "club_name": "FC S\u00fcdtirol",
+        "tm_url_slug": "fc-s-dtirol",
+        "status": "done",
+        "scraped_at": "2026-06-03T13:59:19+00:00",
+        "squad_count": 27,
+        "loans_count": 5
+      },
+      {
+        "club_id": "2581",
+        "club_name": "Mantova 1911",
+        "tm_url_slug": "mantova-1911",
+        "status": "done",
+        "scraped_at": "2026-06-03T13:59:26+00:00",
+        "squad_count": 30,
+        "loans_count": 7
+      },
+      {
+        "club_id": "1385",
+        "club_name": "Modena FC",
+        "tm_url_slug": "modena-fc",
+        "status": "done",
+        "scraped_at": "2026-06-03T13:59:32+00:00",
+        "squad_count": 28,
+        "loans_count": 3
+      },
+      {
+        "club_id": "458",
+        "club_name": "Palermo FC",
+        "tm_url_slug": "palermo-fc",
+        "status": "done",
+        "scraped_at": "2026-06-03T13:59:38+00:00",
+        "squad_count": 24,
+        "loans_count": 13
+      },
+      {
+        "club_id": "4172",
+        "club_name": "Pisa Sporting Club",
+        "tm_url_slug": "ac-pisa-1909",
+        "status": "done"
+      },
+      {
+        "club_id": "5587",
+        "club_name": "SS Juve Stabia",
+        "tm_url_slug": "ss-juve-stabia",
+        "status": "done",
+        "scraped_at": "2026-06-03T13:59:44+00:00",
+        "squad_count": 28,
+        "loans_count": 13
+      },
+      {
+        "club_id": "332",
+        "club_name": "SSC Bari",
+        "tm_url_slug": "ssc-bari",
+        "status": "done",
+        "scraped_at": "2026-06-03T13:59:50+00:00",
+        "squad_count": 31,
+        "loans_count": 5
+      },
+      {
+        "club_id": "3522",
+        "club_name": "Spezia Calcio",
+        "tm_url_slug": "spezia-calcio",
+        "status": "done",
+        "scraped_at": "2026-06-03T13:59:57+00:00",
+        "squad_count": 28,
+        "loans_count": 14
+      },
+      {
+        "club_id": "1038",
+        "club_name": "UC Sampdoria",
+        "tm_url_slug": "sampdoria-genua",
+        "status": "done",
+        "scraped_at": "2026-06-03T14:00:04+00:00",
+        "squad_count": 30,
+        "loans_count": 10
+      },
+      {
+        "club_id": "2331",
+        "club_name": "US Avellino 1912",
+        "tm_url_slug": "us-avellino-1912",
+        "status": "done",
+        "scraped_at": "2026-06-03T14:00:11+00:00",
+        "squad_count": 30,
+        "loans_count": 16
+      },
+      {
+        "club_id": "4097",
+        "club_name": "US Catanzaro",
+        "tm_url_slug": "us-catanzaro",
+        "status": "done",
+        "scraped_at": "2026-06-03T14:00:16+00:00",
+        "squad_count": 30,
+        "loans_count": 6
+      },
+      {
+        "club_id": "2239",
+        "club_name": "Unione Sportiva Cremonese S.p.A.",
+        "tm_url_slug": "us-cremonese",
+        "status": "done"
+      },
+      {
+        "club_id": "276",
+        "club_name": "Verona Hellas Football Club",
+        "tm_url_slug": "hellas-verona",
+        "status": "done"
+      },
+      {
+        "club_id": "20519",
+        "club_name": "Virtus Entella",
+        "tm_url_slug": "virtus-entella",
+        "status": "done",
+        "scraped_at": "2026-06-03T14:00:23+00:00",
+        "squad_count": 28,
+        "loans_count": 14
+      }
+    ],
+    "L2": [
+      {
+        "club_id": "2036",
+        "club_name": "1. Fu\u00dfballclub Heidenheim 1846",
+        "tm_url_slug": "1-fc-heidenheim-1846",
+        "status": "done"
+      },
+      {
+        "club_id": "2",
+        "club_name": "1.FC Kaiserslautern",
+        "tm_url_slug": "1-fc-kaiserslautern",
+        "status": "done",
+        "scraped_at": "2026-06-03T14:00:29+00:00",
+        "squad_count": 28,
+        "loans_count": 6
+      },
+      {
+        "club_id": "187",
+        "club_name": "1.FC Magdeburg",
+        "tm_url_slug": "1-fc-magdeburg",
+        "status": "done",
+        "scraped_at": "2026-06-03T14:00:35+00:00",
+        "squad_count": 32,
+        "loans_count": 1
+      },
+      {
+        "club_id": "4",
+        "club_name": "1.FC Nuremberg",
+        "tm_url_slug": "1-fc-nurnberg",
+        "status": "done",
+        "scraped_at": "2026-06-03T14:00:41+00:00",
+        "squad_count": 30,
+        "loans_count": 7
+      },
+      {
+        "club_id": "10",
+        "club_name": "Arminia Bielefeld",
+        "tm_url_slug": "arminia-bielefeld",
+        "status": "done",
+        "scraped_at": "2026-06-03T14:00:47+00:00",
+        "squad_count": 29,
+        "loans_count": 4
+      },
+      {
+        "club_id": "23",
+        "club_name": "Eintracht Braunschweig",
+        "tm_url_slug": "eintracht-braunschweig",
+        "status": "done",
+        "scraped_at": "2026-06-03T14:00:53+00:00",
+        "squad_count": 28,
+        "loans_count": 4
+      },
+      {
+        "club_id": "38",
+        "club_name": "Fortuna D\u00fcsseldorf",
+        "tm_url_slug": "fortuna-dusseldorf",
+        "status": "done",
+        "scraped_at": "2026-06-03T14:00:58+00:00",
+        "squad_count": 31,
+        "loans_count": 4
+      },
+      {
+        "club_id": "35",
+        "club_name": "Fu\u00dfball-Club St. Pauli von 1910",
+        "tm_url_slug": "fc-st-pauli",
+        "status": "done"
+      },
+      {
+        "club_id": "42",
+        "club_name": "Hannover 96",
+        "tm_url_slug": "hannover-96",
+        "status": "done",
+        "scraped_at": "2026-06-03T14:01:03+00:00",
+        "squad_count": 30,
+        "loans_count": 4
+      },
+      {
+        "club_id": "44",
+        "club_name": "Hertha BSC",
+        "tm_url_slug": "hertha-bsc",
+        "status": "done",
+        "scraped_at": "2026-06-03T14:01:11+00:00",
+        "squad_count": 30,
+        "loans_count": 3
+      },
+      {
+        "club_id": "269",
+        "club_name": "Holstein Kiel",
+        "tm_url_slug": "holstein-kiel",
+        "status": "done",
+        "scraped_at": "2026-06-03T14:01:17+00:00",
+        "squad_count": 30,
+        "loans_count": 5
+      },
+      {
+        "club_id": "48",
+        "club_name": "Karlsruher SC",
+        "tm_url_slug": "karlsruher-sc",
+        "status": "done",
+        "scraped_at": "2026-06-03T14:01:38+00:00",
+        "squad_count": 29,
+        "loans_count": 1
+      },
+      {
+        "club_id": "91",
+        "club_name": "Preu\u00dfen M\u00fcnster",
+        "tm_url_slug": "preu-en-m-nster",
+        "status": "done",
+        "scraped_at": "2026-06-03T14:01:42+00:00",
+        "squad_count": 30,
+        "loans_count": 0
+      },
+      {
+        "club_id": "129",
+        "club_name": "SG Dynamo Dresden",
+        "tm_url_slug": "sg-dynamo-dresden",
+        "status": "done",
+        "scraped_at": "2026-06-03T14:02:08+00:00",
+        "squad_count": 28,
+        "loans_count": 4
+      },
+      {
+        "club_id": "105",
+        "club_name": "SV Darmstadt 98",
+        "tm_url_slug": "sv-darmstadt-98",
+        "status": "done",
+        "scraped_at": "2026-06-03T14:02:21+00:00",
+        "squad_count": 27,
+        "loans_count": 5
+      },
+      {
+        "club_id": "65",
+        "club_name": "SpVgg Greuther F\u00fcrth",
+        "tm_url_slug": "spvgg-greuther-furth",
+        "status": "done",
+        "scraped_at": "2026-06-03T14:02:39+00:00",
+        "squad_count": 32,
+        "loans_count": 6
+      },
+      {
+        "club_id": "82",
+        "club_name": "Verein f\u00fcr Leibes\u00fcbungen Wolfsburg",
+        "tm_url_slug": "vfl-wolfsburg",
+        "status": "done"
+      },
+      {
+        "club_id": "80",
+        "club_name": "VfL Bochum",
+        "tm_url_slug": "vfl-bochum",
+        "status": "done",
+        "scraped_at": "2026-06-03T14:02:55+00:00",
+        "squad_count": 29,
+        "loans_count": 4
       }
     ]
   },
   "totals": {
     "GB1": 20,
     "GB2": 24,
-    "ES1": 20,
+    "ES1": 19,
     "IT1": 20,
     "FR1": 18,
     "FR2": 18,
     "L1": 18,
     "PO1": 18,
     "NL1": 18,
-    "BE1": 16
+    "BE1": 16,
+    "ES2": 23,
+    "IT2": 20,
+    "L2": 18
   }
 }
