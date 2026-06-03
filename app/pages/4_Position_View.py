@@ -129,8 +129,7 @@ def _overview_data() -> dict[str, dict]:
         n_players_universe = con.execute("""
             SELECT COUNT(*) FROM player_universe
             WHERE position_bucket = ?
-              AND (right_priced=1 OR finished_product=1
-                   OR finished_product IS NULL OR contract_leveraged=1)
+              AND sellability_status = 'sellable_now'
         """, (b,)).fetchone()[0]
         n_players_excluded = 0
         if excluded:
@@ -138,8 +137,7 @@ def _overview_data() -> dict[str, dict]:
             n_players_excluded = con.execute(f"""
                 SELECT COUNT(*) FROM player_universe
                 WHERE position_bucket = ? AND player_id IN {ids_sql}
-                  AND (right_priced=1 OR finished_product=1
-                       OR finished_product IS NULL OR contract_leveraged=1)
+                  AND sellability_status = 'sellable_now'
             """, (b,)).fetchone()[0]
         n_players = n_players_universe - n_players_excluded
 

@@ -56,7 +56,7 @@ if not raw_pid:
         SELECT player_id, age, position_bucket, current_club, current_club_id,
                parent_club, parent_club_id, sellability_score, on_loan
         FROM player_universe
-        WHERE (right_priced=1 OR finished_product=1 OR finished_product IS NULL OR contract_leveraged=1)
+        WHERE sellability_status = 'sellable_now'
     """).fetchall()}
 
     rows = []

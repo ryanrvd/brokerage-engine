@@ -51,7 +51,10 @@ CREATE TABLE player_universe (
     on_loan                INTEGER,    -- 1 if parent_club != current_club, else 0
     -- Source provenance — useful when we merge scraped second-tier data
     data_source            TEXT NOT NULL DEFAULT 'dcaribou',
-    snapshot_date          DATE NOT NULL
+    snapshot_date          DATE NOT NULL,
+    -- Day 8: sellability as tag (not filter) + loan metadata
+    sellability_status     TEXT,       -- sellable_now / sellable_with_caveat / not_sellable / out_of_scope
+    loan_end_date          DATE        -- populated from TM scrape's loans-out page when on_loan=1
 );
 
 DROP TABLE IF EXISTS club_pressure;
@@ -95,6 +98,15 @@ CREATE INDEX IF NOT EXISTS idx_pu_club   ON player_universe(current_club_id);
 CREATE INDEX IF NOT EXISTS idx_cp_league ON club_pressure(league_id);
 CREATE INDEX IF NOT EXISTS idx_sr_club   ON senior_roster(club_id);
 CREATE INDEX IF NOT EXISTS idx_sr_league ON senior_roster(league_id);
+
+-- Day 8: SciSports linkage + recently-relegated/promoted flags.
+-- Added via ALTER so existing positional INSERTs in scripts 03/06/28 keep
+-- working (these columns default to NULL and are populated by 19/29/30).
+ALTER TABLE player_universe ADD COLUMN scisports_player_id           INTEGER;
+ALTER TABLE player_universe ADD COLUMN parent_club_recently_relegated INTEGER;
+ALTER TABLE player_universe ADD COLUMN mandate_priority_multiplier   REAL DEFAULT 1.0;
+ALTER TABLE club_pressure   ADD COLUMN recently_relegated INTEGER DEFAULT 0;
+ALTER TABLE club_pressure   ADD COLUMN recently_promoted  INTEGER DEFAULT 0;
 """
 
 

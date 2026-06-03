@@ -38,21 +38,40 @@ import config
 OVERRIDES_CSV = Path("data/manual_league_overrides.csv")
 
 SEED_OVERRIDES: list[dict] = [
-    # Promoted from GB2 → GB1 (Championship → Premier League)
+    # Promoted Championship → Premier League for 26/27
     {"club_id": "990",  "club_name": "Coventry City",
      "override_league_id": "GB1", "override_league_display": "Premier League",
-     "reason": "promoted from Championship for 26/27 (workbook/dcaribou still stale)"},
+     "reason": "promoted to Premier League for 26/27"},
     {"club_id": "677",  "club_name": "Ipswich Town",
      "override_league_id": "GB1", "override_league_display": "Premier League",
-     "reason": "promoted from Championship for 26/27 (workbook/dcaribou still stale)"},
-    # Relegated from GB1 → GB2 (Premier League → Championship)
+     "reason": "promoted to Premier League for 26/27"},
+    {"club_id": "3008", "club_name": "Hull City",
+     "override_league_id": "GB1", "override_league_display": "Premier League",
+     "reason": "promoted to Premier League for 26/27"},
+    # Relegated Premier League → Championship end of 25/26
     {"club_id": "543",  "club_name": "Wolverhampton Wanderers Football Club",
      "override_league_id": "GB2", "override_league_display": "Championship",
-     "reason": "relegated from Premier League for 26/27 (workbook/dcaribou still stale)"},
+     "reason": "relegated from Premier League end of 25/26"},
     {"club_id": "1132", "club_name": "Burnley Football Club",
      "override_league_id": "GB2", "override_league_display": "Championship",
-     "reason": "relegated from Premier League for 26/27 (workbook/dcaribou still stale)"},
+     "reason": "relegated from Premier League end of 25/26"},
+    {"club_id": "379",  "club_name": "West Ham United Football Club",
+     "override_league_id": "GB2", "override_league_display": "Championship",
+     "reason": "relegated from Premier League end of 25/26"},
 ]
+
+
+# Recently-relegated/promoted classification — derived from the override
+# direction in the CSV's `reason` text. Drives club_pressure.recently_relegated
+# and recently_promoted, which feed mandate_priority_multiplier downstream.
+def _classify_movement(reason: str) -> tuple[int, int]:
+    """Return (recently_relegated, recently_promoted) booleans (0/1)."""
+    r = (reason or "").lower()
+    if "relegat" in r:
+        return 1, 0
+    if "promot" in r:
+        return 0, 1
+    return 0, 0
 
 
 def _seed_csv_if_missing() -> None:
@@ -133,6 +152,58 @@ def apply_overrides(con: sqlite3.Connection, overrides: list[dict]) -> dict[str,
     return counts
 
 
+def apply_recent_movement_flags(
+    con: sqlite3.Connection, overrides: list[dict],
+) -> dict[str, int]:
+    """Stamp recently_relegated / recently_promoted on club_pressure and
+    cascade parent_club_recently_relegated + mandate_priority_multiplier
+    onto player_universe via parent_club_id.
+
+    mandate_priority_multiplier:
+      1.3 — recently relegated (Wolves, Burnley, West Ham). Elevated mandate
+            priority: more valuable squad than typical relegated cohort,
+            structural sell pressure.
+      1.1 — recently promoted (Coventry, Ipswich, Hull). Strengthening; more
+            selective on outbound.
+      1.0 — everyone else (default DEFAULT 1.0 in schema).
+    """
+    if not _table_exists(con, "club_pressure"):
+        return {}
+    # Zero out previous run so removed overrides revert to 0.
+    con.execute("UPDATE club_pressure SET recently_relegated = 0, recently_promoted = 0")
+    if _table_exists(con, "player_universe"):
+        con.execute(
+            "UPDATE player_universe SET parent_club_recently_relegated = 0, "
+            "mandate_priority_multiplier = 1.0"
+        )
+
+    counts = {"club_pressure_rel": 0, "club_pressure_pro": 0, "player_universe": 0}
+    for ov in overrides:
+        cid = ov["club_id"]
+        rel, pro = _classify_movement(ov.get("reason", ""))
+        if rel == 0 and pro == 0:
+            continue
+        cur = con.execute(
+            "UPDATE club_pressure SET recently_relegated = ?, recently_promoted = ? "
+            "WHERE club_id = ?",
+            (rel, pro, cid),
+        )
+        if rel:
+            counts["club_pressure_rel"] += cur.rowcount
+        if pro:
+            counts["club_pressure_pro"] += cur.rowcount
+
+        if _table_exists(con, "player_universe"):
+            multiplier = 1.3 if rel else 1.1
+            cur2 = con.execute(
+                "UPDATE player_universe SET parent_club_recently_relegated = ?, "
+                "mandate_priority_multiplier = ? WHERE parent_club_id = ?",
+                (rel, multiplier, cid),
+            )
+            counts["player_universe"] += cur2.rowcount
+    return counts
+
+
 def _rederive_demand_signal(con: sqlite3.Connection) -> int:
     """Same logic as scripts/16_load_market_maps.py:derive_demand_signal."""
     if not _table_exists(con, "map_demand_signal") or not _table_exists(con, "map_club_requests"):
@@ -171,6 +242,7 @@ def main() -> None:
 
     with sqlite3.connect(config.SQLITE_FILE) as con:
         counts = apply_overrides(con, overrides)
+        movement = apply_recent_movement_flags(con, overrides)
         n_ds = _rederive_demand_signal(con)
         con.commit()
 
@@ -180,6 +252,12 @@ def main() -> None:
         print(f"  {table:22s} {n}")
     if n_ds:
         print(f"  map_demand_signal      re-derived ({n_ds} rows)")
+    if movement:
+        print()
+        print("Recently-relegated/promoted flags applied:")
+        print(f"  club_pressure   recently_relegated set on {movement['club_pressure_rel']} club(s)")
+        print(f"  club_pressure   recently_promoted  set on {movement['club_pressure_pro']} club(s)")
+        print(f"  player_universe mandate_priority_multiplier set on {movement['player_universe']} row(s)")
     print()
     print("NOTE: this script only rewrites labels. It does not recompute pressure")
     print("scores. If a club's league change affects per-league net_spend pooling,")

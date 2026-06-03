@@ -240,7 +240,7 @@ def main() -> None:
             share = round(100 * minutes_in_window / available_minutes, 1) if available_minutes else None
             current_club_id_str = str(current_club_id) if current_club_id is not None else None
             dst.execute(
-                "INSERT INTO player_universe VALUES (" + ",".join(["?"] * 32) + ")",
+                "INSERT INTO player_universe VALUES (" + ",".join(["?"] * 37) + ")",
                 (
                     int(player_id),
                     name,
@@ -274,6 +274,11 @@ def main() -> None:
                     0,                   # on_loan — default 0; flipped by 11
                     "dcaribou",
                     str(snapshot),
+                    None,  # sellability_status — set by 09
+                    None,  # loan_end_date — set by 11/28 if on loan
+                    None,  # scisports_player_id — set by 29
+                    0,     # parent_club_recently_relegated — set by 19
+                    1.0,   # mandate_priority_multiplier — overwritten by 19 for relegated/promoted
                 ),
             )
         for cid, cname, comp_id in club_rows:

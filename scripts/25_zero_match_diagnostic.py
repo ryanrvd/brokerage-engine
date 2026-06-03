@@ -351,8 +351,7 @@ def main():
                    cp.league_id AS parent_league
             FROM player_universe pu
             LEFT JOIN club_pressure cp ON cp.club_id = pu.parent_club_id
-            WHERE (pu.right_priced=1 OR pu.finished_product=1
-                   OR pu.finished_product IS NULL OR pu.contract_leveraged=1)
+            WHERE pu.sellability_status = 'sellable_now'
         """))
         orphans = []
         for p in sellables:

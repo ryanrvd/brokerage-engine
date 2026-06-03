@@ -108,8 +108,7 @@ def _build_rows(con: sqlite3.Connection, existing: dict[int, dict]) -> list[dict
                pu.parent_club, pu.league_id, pu.current_tm_value_eur,
                pu.sellability_score, pu.contract_end_date
         FROM player_universe pu
-        WHERE (pu.right_priced=1 OR pu.finished_product=1
-               OR pu.finished_product IS NULL OR pu.contract_leveraged=1)
+        WHERE pu.sellability_status = 'sellable_now'
     """).fetchall()
 
     out: list[dict] = []

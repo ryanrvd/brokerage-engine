@@ -501,11 +501,13 @@ After a code change or fresh dcaribou snapshot:
 .venv/bin/python scripts/03_build_universe.py
 .venv/bin/python scripts/06_scrape_second_tiers.py
 .venv/bin/python scripts/07_extend_roster.py
-.venv/bin/python scripts/19_apply_league_overrides.py    # pre-08: corrects senior_roster + player_universe before pressure is scored
+.venv/bin/python scripts/28_ingest_pl_squads.py          # TM kader scrape — full PL squads (cookie-auth required, see Day 8 notes)
+.venv/bin/python scripts/19_apply_league_overrides.py    # pre-08: corrects senior_roster + player_universe + recently-relegated/promoted flags
 .venv/bin/python scripts/08_compute_pressure.py
 .venv/bin/python scripts/11_patch_loans.py
-.venv/bin/python scripts/13_scrape_fees.py
-.venv/bin/python scripts/09_compute_sellability.py
+.venv/bin/python scripts/13_scrape_fees.py               # skips pl_squad_full (no fee data via TM kader)
+.venv/bin/python scripts/09_compute_sellability.py       # tags every player with sellability_status (sellable_now / with_caveat / not / out_of_scope)
+.venv/bin/python scripts/29_ingest_squads_via_api.py     # local-only — links scisports_player_id onto pl_squad_full rows via name+DOB
 .venv/bin/python scripts/05_excel_export.py
 .venv/bin/python scripts/10_export_pressure_sheets.py
 # ── Day 4 demand-side layer ────────────────────────────────────────────────
@@ -515,8 +517,9 @@ After a code change or fresh dcaribou snapshot:
 .venv/bin/python scripts/17_export_demand_sheets.py
 .venv/bin/python scripts/18_manual_flags_excel.py        # refreshes manual_flags.xlsx from updated club_pressure
 .venv/bin/python scripts/reconcile_scisports.py          # refreshes data/scisports_ratings.xlsx against new cohort
+.venv/bin/python scripts/30_refresh_player_metrics.py    # SciSports API — fetches CA/PA for PL squad players (rate-paced, see Day 8 notes)
 .venv/bin/python scripts/load_scisports_ratings.py       # pulls user-entered CA/PA values into player_ratings
-.venv/bin/python scripts/22_match_engine.py              # match scoring (runs AFTER Sci Sports load so future versions can incorporate CA/PA)
+.venv/bin/python scripts/22_match_engine.py              # match scoring
 .venv/bin/python scripts/23_export_brokerage_sheet.py    # Sheet 1
 ```
 
@@ -524,9 +527,79 @@ All HTML/JSON cached in `data/tm_cache/`, so post-first-run reruns are instant. 
 
 ---
 
+## Day 8 — SciSports API + mandate-priority cohort
+
+### What changed
+1. **Mandate-relevant cohort widened** beyond current PL: every recently-relegated club's players carry an elevated mandate priority. The matcher now actively surfaces sellable assets at clubs facing structural relegation pressure.
+2. **CA/PA values land via a rate-paced API client**, not just manual entry. The xlsx remains the user-editable canvas; manually-entered values are never overwritten.
+3. **Shared SciSports budget protected by paranoid pacing.** This account had a written warning for over-use; the matcher's client respects floors well below the documented limit.
+
+### Mandate-priority cohort
+Defined by two columns on `club_pressure`:
+
+| Column | Meaning |
+|---|---|
+| `recently_relegated INTEGER` (0/1) | True for clubs relegated end-of-25/26: **Wolves, Burnley, West Ham** |
+| `recently_promoted INTEGER` (0/1) | True for clubs promoted to 26/27: **Coventry, Ipswich, Hull City** |
+
+Stamped by `19_apply_league_overrides.py` from the `reason` text in `data/manual_league_overrides.csv` (six rows: 3 relegated + 3 promoted).
+
+Cascaded onto every `player_universe` row via the parent club:
+
+| Column | Value | Meaning |
+|---|---|---|
+| `parent_club_recently_relegated INTEGER` | 0 / 1 | Denormalised flag for fast queries |
+| `mandate_priority_multiplier REAL` | **1.3** | Parent recently relegated (Wolves/Burnley/West Ham). Elevated mandate priority — squads more valuable than typical relegated cohort, structural sell pressure |
+| | **1.1** | Parent recently promoted (Coventry/Ipswich/Hull). Strengthening; more selective on outbound |
+| | **1.0** | Default — current PL or any other cohort |
+
+Hull City's `club_pressure` row was never seeded (dcaribou's last record for Hull is the 2016 PL season). The override CSV still applies the GB1 tag to Hull's TM-scraped players, which carry the multiplier on `player_universe`. Full coverage lands when the Championship bridge extension lands in a follow-up.
+
+### SciSports API integration
+
+| File | Role |
+|---|---|
+| `scripts/_scisports_client.py` | The only place HTTP hits the SciSports API. OAuth2 password grant; **scope='api recruitment'** is mandatory (binds JWT `aud` claim; without it every endpoint returns 401 audience-empty — costly discovery in the maps repo). |
+| `scripts/_scisports_cache.py` | SHA-256 cache layer. TTLs: 30d leagues/teams, 24h rosters, 7d sciskill. Cache hits cost zero quota. |
+| `scripts/_scisports_resolve_pl_teams.py` | Phase-2 helper — paginates `/Leagues` and `/Teams` to capture the 20 PL teams (saved to `data/scisports_team_ids.json`), then walks each team's `/Players?CurrentTeamIds=…` for the full bridge (saved to `data/scisports_pl_player_roster.json`). |
+| `scripts/_scisports_seed_cache.py` | Optional helper that seeds the cache with manual xlsx CA/PA. Phase-3 audit revealed the original name-token fallback caused collisions (Juanlu Sánchez → Robert Sánchez, Julio Enciso → Julio Soler). Matching now **requires DOB**; no name-only fallback. |
+| `scripts/29_ingest_squads_via_api.py` | Local-only — name+DOB-matches SciSports bridge entries to `pl_squad_full` rows and writes `scisports_player_id`. No API calls. 527/623 = 85% link rate; unmatched are mostly U23/academy. |
+| `scripts/30_refresh_player_metrics.py` | The API-hitting CA/PA fetch. Queue order: relegated cohort first → sellable_now → sellable_with_caveat → other. Skips any player whose `player_ratings` row is `active` AND `last_updated` within 7d. Pacing enforced by the client. Writes back to both `player_ratings` and the xlsx (preserving manual values + notes). |
+
+### Pacing rules — binding floors, not aspirations
+
+| Rule | Value | Where enforced |
+|---|---|---|
+| Max sustained rate | 8 req/sec (half the documented 16/sec) | `ConservativeLimiter.wait_for_slot` |
+| Burst cap | ≤30 requests in any rolling 5s window | same |
+| Min inter-request gap | 250ms (defensive floor) | same |
+| Soft throttle | remaining < 500 → 500ms sleep before next call | `apply_post_response_throttle` |
+| Hard throttle | remaining < 300 → 5s sleep | same |
+| **Emergency stop** | remaining < 100 → raise `ScisportsRateLimitEmergency`, halt the run | `_request` post-response check |
+| On HTTP 429 | single retry honouring Retry-After; second 429 → `ScisportsRateLimitedError`, halt | `_request` 429 branch |
+
+Every call logged to `logs/scisports_api.log` with timestamp, endpoint, status, elapsed_ms, remaining quota.
+
+### Coordination protocol — shared budget across repos
+The matcher and `~/market-movement-maps/` authenticate as the same `client_id` and consume the same 1000-req/60s budget. Both pipelines call `client.preflight_baseline()` as their first authenticated request; if `X-RateLimit-Remaining` is < 800 the script halts and asks the user to confirm no concurrent run in the other repo. The audit log records every preflight for cross-repo correlation.
+
+### Phase 3 verified results (snapshot 2026-05-29)
+- 20 PL teams resolved (SciSports IDs 505–545); bridge captured 572 players.
+- 527 `pl_squad_full` rows linked to a `scisports_player_id` (84.6% match rate; unmatched almost entirely U23/academy).
+- 491 PL squad players refreshed via the API or cache (49 originally-seeded entries were invalidated after the seed-mismatch audit, then re-fetched live).
+- Min `X-RateLimit-Remaining` seen during Phase 3 = **983** — never approached the 500 soft, 300 hard, or 100 emergency thresholds.
+- Manual-vs-API cross-check (Jake O'Brien, the only sci-linked manual entry where xlsx and DB diverged): Δca = -1.6, Δpa = +0.9 — both within ±2.0 tolerance.
+- Selling pressure elevation for relegated parents: avg sellability 59.0 (n=91) vs current-PL baseline 50.0 (n=532). Top brokerage scores dominated by Wolves squad (Sam Johnstone, José Sá, Hee-chan Hwang at 69.4 × 1.3 mult).
+
+### Follow-up
+- Championship bridge extension picks up Hull City + Coventry + Ipswich properly (SciSports has them in `currentLeague.id = 51`, not 50). Same Phase-2/Phase-3 pattern applies.
+- Streamlit Club View should render a "Recently relegated" badge from `club_pressure.recently_relegated`. The data is there; the UI rendering is a follow-up prompt.
+
+---
+
 ## Sci Sports talent layer
 
-User-curated CA (current ability) and PA (potential ability) ratings, manually entered and preserved across weekly TM refreshes.
+User-curated CA (current ability) and PA (potential ability) ratings, manually entered and preserved across weekly TM refreshes. As of Day 8 they ALSO come from the SciSports API (script 30); manually-entered values always win on conflict.
 
 - **Source of truth:** `data/scisports_ratings.xlsx`
 - **Reconciliation:** `python scripts/reconcile_scisports.py` (auto-runs in the refresh pipeline above, between `18_manual_flags_excel.py` and `22_match_engine.py`)

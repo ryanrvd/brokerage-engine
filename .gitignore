@@ -41,6 +41,9 @@ data/*.bak
 .env.local
 *.env
 
+# TM session cookie (user-pasted after solving CAPTCHA — NEVER commit)
+data/tm_cookie.txt
+
 # Logs
 logs/
 *.log

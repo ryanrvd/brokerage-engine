@@ -75,8 +75,7 @@ _dml_ph = ",".join("?" * len(_dml))
 
 n_sellable_total = con.execute("""
     SELECT COUNT(*) FROM player_universe
-    WHERE (right_priced=1 OR finished_product=1
-           OR finished_product IS NULL OR contract_leveraged=1)
+    WHERE sellability_status = 'sellable_now'
 """).fetchone()[0]
 n_sellable_excluded = 0
 if excluded_ids:
@@ -84,8 +83,7 @@ if excluded_ids:
     n_sellable_excluded = con.execute(f"""
         SELECT COUNT(*) FROM player_universe
         WHERE player_id IN {ids_sql}
-          AND (right_priced=1 OR finished_product=1
-               OR finished_product IS NULL OR contract_leveraged=1)
+          AND sellability_status = 'sellable_now'
     """).fetchone()[0]
 n_sellable_actionable = n_sellable_total - n_sellable_excluded
 
@@ -96,8 +94,7 @@ n_rated = con.execute("""
 """).fetchone()[0]
 n_in_universe = con.execute("""
     SELECT COUNT(*) FROM player_universe pu
-    WHERE (right_priced=1 OR finished_product=1
-           OR finished_product IS NULL OR contract_leveraged=1)
+    WHERE sellability_status = 'sellable_now'
 """).fetchone()[0]
 n_unrated = max(0, n_in_universe - n_rated)
 
@@ -182,8 +179,7 @@ for pos, lg, n in con.execute("""
     SELECT pu.position_bucket, cp.league_id, COUNT(*)
     FROM player_universe pu
     JOIN club_pressure cp ON cp.club_id = pu.parent_club_id
-    WHERE (pu.right_priced=1 OR pu.finished_product=1
-           OR pu.finished_product IS NULL OR pu.contract_leveraged=1)
+    WHERE pu.sellability_status = 'sellable_now'
     GROUP BY pu.position_bucket, cp.league_id
 """).fetchall():
     if (pos, lg) in _supply:
@@ -384,8 +380,7 @@ with col_pressed:
         SELECT cp.club_id, cp.name, cp.total_pressure_score, cp.league_id,
                (SELECT COUNT(*) FROM player_universe pu
                 WHERE pu.parent_club_id = cp.club_id
-                  AND (pu.right_priced=1 OR pu.finished_product=1
-                       OR pu.finished_product IS NULL OR pu.contract_leveraged=1)
+                  AND pu.sellability_status = 'sellable_now'
                ) AS n_sellable
         FROM club_pressure cp
         WHERE cp.total_pressure_score IS NOT NULL
@@ -407,8 +402,7 @@ with col_pressed:
             top_player_row = con.execute("""
                 SELECT player_id, name FROM player_universe
                 WHERE parent_club_id = ?
-                  AND (right_priced=1 OR finished_product=1
-                       OR finished_product IS NULL OR contract_leveraged=1)
+                  AND sellability_status = 'sellable_now'
                 ORDER BY sellability_score DESC LIMIT 1
             """, (cid,)).fetchone()
             if top_player_row:
@@ -451,8 +445,7 @@ with col_pos:
     _pos_supply_all = dict(con.execute("""
         SELECT pu.position_bucket, COUNT(*)
         FROM player_universe pu
-        WHERE (pu.right_priced=1 OR pu.finished_product=1
-               OR pu.finished_product IS NULL OR pu.contract_leveraged=1)
+        WHERE pu.sellability_status = 'sellable_now'
         GROUP BY pu.position_bucket
     """).fetchall())
     _pos_demand_mapped = dict(con.execute(f"""
@@ -509,8 +502,7 @@ with col_lg:
             JOIN club_pressure cp ON cp.club_id = pu.parent_club_id
             WHERE cp.league_id = ?
               AND pu.player_id NOT IN ({excl})
-              AND (pu.right_priced=1 OR pu.finished_product=1
-                   OR pu.finished_product IS NULL OR pu.contract_leveraged=1)
+              AND pu.sellability_status = 'sellable_now'
         """.format(excl=excluded_csv), (lg,)).fetchone()[0]
         # Requests from this league
         n_req = con.execute("""

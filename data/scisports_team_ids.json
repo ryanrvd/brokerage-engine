@@ -1,0 +1,89 @@
+{
+  "league": {
+    "id": 50,
+    "name": "Premier League"
+  },
+  "fetched_at": "2026-05-28T12:20:49+00:00",
+  "teams": [
+    {
+      "id": 505,
+      "name": "Chelsea FC"
+    },
+    {
+      "id": 506,
+      "name": "Tottenham Hotspur"
+    },
+    {
+      "id": 507,
+      "name": "Manchester City"
+    },
+    {
+      "id": 508,
+      "name": "Liverpool FC"
+    },
+    {
+      "id": 509,
+      "name": "Arsenal FC"
+    },
+    {
+      "id": 510,
+      "name": "Manchester United"
+    },
+    {
+      "id": 511,
+      "name": "Everton FC"
+    },
+    {
+      "id": 513,
+      "name": "AFC Bournemouth"
+    },
+    {
+      "id": 515,
+      "name": "West Ham United"
+    },
+    {
+      "id": 518,
+      "name": "Crystal Palace"
+    },
+    {
+      "id": 520,
+      "name": "Burnley FC"
+    },
+    {
+      "id": 522,
+      "name": "Newcastle United"
+    },
+    {
+      "id": 523,
+      "name": "Brighton & Hove Albion"
+    },
+    {
+      "id": 527,
+      "name": "Sunderland AFC"
+    },
+    {
+      "id": 530,
+      "name": "Fulham FC"
+    },
+    {
+      "id": 531,
+      "name": "Leeds United"
+    },
+    {
+      "id": 534,
+      "name": "Brentford FC"
+    },
+    {
+      "id": 537,
+      "name": "Aston Villa"
+    },
+    {
+      "id": 539,
+      "name": "Wolverhampton Wanderers"
+    },
+    {
+      "id": 545,
+      "name": "Nottingham Forest"
+    }
+  ]
+}

@@ -659,8 +659,7 @@ pressured_rows = con.execute("""
     SELECT cp.club_id, cp.name AS official_name, cp.total_pressure_score,
            (SELECT COUNT(*) FROM player_universe pu
             WHERE pu.parent_club_id = cp.club_id
-              AND (pu.right_priced=1 OR pu.finished_product=1
-                   OR pu.finished_product IS NULL OR pu.contract_leveraged=1)
+              AND pu.sellability_status = 'sellable_now'
            ) AS n_sellable
     FROM club_pressure cp
     WHERE cp.league_id = ?

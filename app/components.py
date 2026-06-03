@@ -287,8 +287,7 @@ def build_player_match_index(con) -> tuple[dict, dict]:
     (player_id, display_name) tuples. Used by `match_interest_name()`."""
     rows = con.execute("""
         SELECT player_id, name FROM player_universe
-        WHERE (right_priced=1 OR finished_product=1
-               OR finished_product IS NULL OR contract_leveraged=1)
+        WHERE sellability_status = 'sellable_now'
     """).fetchall()
 
     full_lookup: dict[str, list[tuple[int, str]]] = {}

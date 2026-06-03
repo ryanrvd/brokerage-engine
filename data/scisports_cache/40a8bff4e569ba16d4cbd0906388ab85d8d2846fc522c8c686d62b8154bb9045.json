@@ -1,0 +1,1 @@
+{"fetched_at": "2026-05-28T17:03:31+00:00", "ttl_seconds": 604800, "endpoint": "/api/v2/metrics/players/sciskill", "params": {"Offset": 0, "Limit": 1, "PlayerIds": 782680}, "source": "live", "data": {"total": 0, "items": []}}

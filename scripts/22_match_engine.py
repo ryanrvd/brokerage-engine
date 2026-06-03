@@ -304,9 +304,7 @@ def build_matches(con: sqlite3.Connection) -> tuple[int, int, dict]:
                pu.current_tm_value_eur, pu.sellability_score, pu.league_id,
                pu.current_club, pu.parent_club, pu.parent_club_id, pu.on_loan
         FROM player_universe pu
-        WHERE (pu.right_priced = 1)
-           OR (pu.finished_product = 1 OR pu.finished_product IS NULL)
-           OR (pu.contract_leveraged = 1)
+        WHERE pu.sellability_status = 'sellable_now'
     """).fetchall()
 
     # Manual wage data (data/manual_wages.xlsx) — only populated for players

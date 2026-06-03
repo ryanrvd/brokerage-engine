@@ -187,9 +187,7 @@ def write_supply_signal_sheet(wb: Workbook, con: sqlite3.Connection) -> int:
             SELECT name, current_club, league, sellability_score
             FROM player_universe
             WHERE position_bucket = ?
-              AND (right_priced = 1
-                   OR finished_product = 1 OR finished_product IS NULL
-                   OR contract_leveraged = 1)
+              AND sellability_status = 'sellable_now'
             ORDER BY sellability_score DESC NULLS LAST
         """, (bucket,)).fetchall()
         total = len(rows)
