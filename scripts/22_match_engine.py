@@ -115,12 +115,16 @@ def init_matches_table(con: sqlite3.Connection) -> None:
             player_pa             REAL,            -- player_ratings.potential_ability
             club_threshold_for_request REAL,       -- buyer's CA threshold for the requested level (today: first-team = sci_first_team_level)
             level_fit             TEXT,            -- 'ON_LEVEL' | 'UPSIDE' | 'BELOW' | 'UNRATED'
-            level_fit_multiplier  REAL,            -- 1.20 / 1.05 / 0.85 / 1.00 — the multiplier applied to match_score
+            level_fit_multiplier  REAL,            -- 1.20 / 1.05 / 0.85 / 1.00 — Brokerage Engine multiplier
+            -- Market View score (docs/market_view_match_formula.md). Computed
+            -- side-by-side with match_score; UI sidebar toggles which one ranks.
+            market_match_score    REAL,
             UNIQUE(player_id, buyer_request_id)
         )
     """)
     con.execute("CREATE INDEX idx_matches_player ON matches(player_id)")
     con.execute("CREATE INDEX idx_matches_score ON matches(match_score DESC)")
+    con.execute("CREATE INDEX idx_matches_market ON matches(market_match_score DESC)")
 
 
 # ─── Sci Sports level-fit ────────────────────────────────────────────────────
@@ -136,6 +140,127 @@ LEVEL_FIT_MULTIPLIERS = {
     "BELOW":    0.85,
     "UNRATED":  1.00,
 }
+
+
+# ─── Market View components (docs/market_view_match_formula.md) ─────────────
+# Multipliers per the spec; UNRATED hard rule means UNRATED matches do not
+# enter the matches table at all (skipped in build_matches, tracked separately
+# for the review worklist).
+MARKET_LEVEL_FIT = {
+    "ON_LEVEL": 1.00,
+    "UPSIDE":   0.70,
+    "BELOW":    0.35,
+}
+
+# Age multiplier — first-order viability dampener
+def market_age_multiplier(age: int | None) -> float:
+    if age is None:
+        return 1.0
+    if age <= 25:
+        return 1.0
+    if age <= 29:
+        return 0.85
+    if age <= 32:
+        return 0.6
+    return 0.35
+
+
+# Demand term — positional+level signal only; named-player interest dropped
+def market_demand_term(source: str | None, validated: str | None) -> float:
+    src = (source or "").strip()
+    val = (validated or "").strip().upper()
+    if src == "Agent" and val == "YES":
+        return 1.0
+    if src == "Agent":
+        return 1.0  # Agent without YES still treated as agent-validated positional
+    if src == "Intel":
+        return 0.75
+    if src == "Inferred":
+        return 0.5
+    return 0.5  # NULL/NULL fallback
+
+
+# Pathway plausibility — S/A/B/C/D/X tier transition matrix
+LEAGUE_TIER_LABEL = {
+    "GB1": "S",
+    "ES1": "A", "IT1": "A", "L1": "A", "FR1": "A",
+    "NL1": "B", "PO1": "B", "BE1": "B", "TR1": "B",
+    "GB2": "C", "L2": "C", "FR2": "C", "IT2": "C", "ES2": "C",
+    "GR1": "D", "DK1": "D", "SC1": "D",
+    "MLS1": "X", "SA1": "X",
+}
+_TIER_RANK = {"S": 5, "A": 4, "B": 3, "C": 2, "D": 1, "X": 0}
+
+
+def market_pathway_score(from_league: str | None, to_league: str | None) -> float:
+    f = LEAGUE_TIER_LABEL.get(from_league)
+    t = LEAGUE_TIER_LABEL.get(to_league)
+    if f is None or t is None:
+        return 0.5
+    # X tier special-cases
+    if t == "X" and f != "X":
+        return 0.5   # into MLS/Saudi
+    if f == "X" and t != "X":
+        return 0.4   # out of MLS/Saudi
+    # Same-tier
+    if f == t:
+        return 0.95 if f == "S" else 0.85
+    fr, tr = _TIER_RANK[f], _TIER_RANK[t]
+    if tr > fr:  # upward in pyramid
+        return 1.0
+    # downward
+    return 0.6 if (fr - tr) == 1 else 0.45  # mild vs steep
+
+
+# Scarcity term — exp((CA - median) / std), clipped [0.5, 1.5]
+def market_scarcity_term(player_ca: float | None,
+                         median_ca: float | None,
+                         std_ca: float | None) -> float:
+    if player_ca is None or median_ca is None or std_ca is None or std_ca <= 0:
+        return 1.0
+    import math
+    z = (player_ca - median_ca) / std_ca
+    return max(0.5, min(1.5, math.exp(z)))
+
+
+# Valuation term — exp(-(pred - benchmark) / benchmark), clipped [0.6, 1.4]
+def market_valuation_term(predicted_fee: float | None,
+                          benchmark_fee: float | None) -> float:
+    if not predicted_fee or not benchmark_fee or benchmark_fee <= 0:
+        return 1.0
+    import math
+    delta_frac = (predicted_fee - benchmark_fee) / benchmark_fee
+    return max(0.6, min(1.4, math.exp(-delta_frac)))
+
+
+# CA band lookup (same bands as cohort_stats_valuation_benchmark)
+_CA_BANDS = [
+    ("60-70",   60.0,   70.0),
+    ("70-80",   70.0,   80.0),
+    ("80-90",   80.0,   90.0),
+    ("90-100",  90.0,  100.0),
+    ("100-110",100.0,  110.0),
+    ("110-120",110.0,  120.0),
+    ("120-130",120.0,  130.0),
+    ("130+",   130.0,  9999.0),
+]
+
+
+def _ca_band_for(ca: float) -> str | None:
+    for label, lo, hi in _CA_BANDS:
+        if lo <= ca < hi:
+            return label
+    return None
+
+
+# Position tension multiplier — NOW ENABLED per spec (squad ingestion across
+# 10 demand-mapped leagues + ES2/IT2/L2 supply complete, sellability tagged).
+def market_tension_multiplier(ratio: float) -> float:
+    if ratio > 1.3:
+        return 1.4
+    if ratio >= 0.7:
+        return 1.0
+    return 0.7
 
 
 def compute_level_fit(player_ca: float | None,
@@ -334,6 +459,23 @@ def build_matches(con: sqlite3.Connection) -> tuple[int, int, dict]:
     ).fetchall():
         club_thresholds[str(cid)] = float(threshold)
 
+    # ─── Market View pre-loads ─────────────────────────────────────────────
+    # Cohort stats per position (scarcity_term)
+    cohort_stats: dict[str, tuple[float, float]] = {}
+    for pos, med, std in con.execute(
+        "SELECT position_bucket, median_ca, std_ca FROM cohort_stats_position "
+        "WHERE median_ca IS NOT NULL"
+    ).fetchall():
+        cohort_stats[pos] = (float(med), float(std))
+
+    # Valuation benchmarks per (position × CA band)
+    valuation_benchmark: dict[tuple[str, str], float] = {}
+    for pos, band, fee in con.execute(
+        "SELECT position_bucket, ca_band, median_predicted_fee FROM cohort_stats_valuation_benchmark "
+        "WHERE median_predicted_fee IS NOT NULL"
+    ).fetchall():
+        valuation_benchmark[(pos, band)] = float(fee)
+
     # Pull buyer requests from both explicit (map_club_requests, 8 manual workbooks)
     # and inferred (inferred_club_requests, senior_roster thinness for all 354 clubs).
     # Distinguished downstream via the `source` column ("Inferred" vs Agent/Intel/...).
@@ -373,6 +515,34 @@ def build_matches(con: sqlite3.Connection) -> tuple[int, int, dict]:
     for r in requests:
         reqs_by_bucket.setdefault(r[4], []).append(r)
 
+    # ─── Position tension multiplier ───────────────────────────────────────
+    # ratio = demand_count / sellability_weighted_supply_count, per position.
+    # Demand = number of buyer requests across all leagues at that position.
+    # Supply = sum of (sellability_score/100) over Market-View cohort
+    #           (sellability > 50 with CA available) at that position.
+    demand_by_pos: dict[str, int] = {}
+    for req in requests:
+        demand_by_pos[req[4]] = demand_by_pos.get(req[4], 0) + 1
+
+    supply_weighted_by_pos: dict[str, float] = {}
+    for pos, w in con.execute("""
+        SELECT pu.position_bucket, SUM(pu.sellability_score / 100.0)
+        FROM player_universe pu
+        JOIN player_ratings pr ON pr.tm_player_id = pu.player_id
+        WHERE pu.sellability_score > 50
+          AND pr.current_ability IS NOT NULL
+          AND pu.position_bucket IS NOT NULL
+        GROUP BY pu.position_bucket
+    """).fetchall():
+        supply_weighted_by_pos[pos] = float(w or 0)
+
+    tension_mult_by_pos: dict[str, float] = {}
+    for pos in set(demand_by_pos) | set(supply_weighted_by_pos):
+        d = demand_by_pos.get(pos, 0)
+        s = supply_weighted_by_pos.get(pos, 0.0)
+        ratio = (d / s) if s > 0 else (10.0 if d > 0 else 1.0)  # avoid divide-by-zero
+        tension_mult_by_pos[pos] = market_tension_multiplier(ratio)
+
     stats = {
         "players_processed":        0,
         "players_with_any_match":   0,
@@ -383,6 +553,8 @@ def build_matches(con: sqlite3.Connection) -> tuple[int, int, dict]:
         "pairs_after_tier":         0,
         "pairs_after_score_floor":  0,
         "pairs_retained":           0,
+        "market_unrated_skipped":   0,   # UNRATED hard-rule
+        "market_unrated_players":   set(),
     }
 
     rows_to_insert: list[tuple] = []
@@ -421,6 +593,48 @@ def build_matches(con: sqlite3.Connection) -> tuple[int, int, dict]:
                            buyer_max_wage_pw=max_wage,
                            player_ca=p_ca, player_pa=p_pa,
                            club_threshold=threshold)
+
+            # ── Market View score (UNRATED hard rule) ──────────────────────
+            # Per docs/market_view_match_formula.md: UNRATED matches do NOT
+            # enter the matches table. Skip and track for the review worklist.
+            if s["level_fit"] == "UNRATED":
+                stats["market_unrated_skipped"] += 1
+                stats["market_unrated_players"].add(pid)
+                continue
+
+            sellability_pillar = (psell or 0.0) / 100.0
+            age_mult = market_age_multiplier(page)
+            demand_t = market_demand_term(source, validated)
+            level_t = MARKET_LEVEL_FIT.get(s["level_fit"], 0.35)
+            financial_t = float(s["budget_fit"]) * float(s["wage_feasibility"])
+            pathway_t = market_pathway_score(pleague, bleague)
+            tension_m = tension_mult_by_pos.get(pbucket, 1.0)
+            # Scarcity
+            med_std = cohort_stats.get(pbucket)
+            if med_std and p_ca is not None:
+                scarcity_t = market_scarcity_term(p_ca, med_std[0], med_std[1])
+            else:
+                scarcity_t = 1.0
+            # Valuation
+            pred_fee = (ptm or 0) * config.tm_to_fee_multiplier(ptm or 0) if ptm else None
+            band = _ca_band_for(p_ca) if p_ca is not None else None
+            bench = valuation_benchmark.get((pbucket, band)) if band else None
+            valuation_t = market_valuation_term(pred_fee, bench)
+
+            market_score_raw = (
+                sellability_pillar
+                * age_mult
+                * demand_t
+                * level_t
+                * financial_t
+                * pathway_t
+                * tension_m
+                * scarcity_t
+                * valuation_t
+            )
+            # Scale to 0-100 to mirror match_score's range for UI consistency
+            market_score = round(market_score_raw * 100.0, 1)
+
             scored.append({
                 "player_id":     pid,
                 "buyer_request_id": rid,
@@ -436,6 +650,7 @@ def build_matches(con: sqlite3.Connection) -> tuple[int, int, dict]:
                 "player_ca": p_ca,
                 "player_pa": p_pa,
                 "club_threshold_for_request": threshold,
+                "market_match_score": market_score,
                 **s,
             })
         # Apply the score floor — drop the long tail of marginal matches
@@ -464,6 +679,7 @@ def build_matches(con: sqlite3.Connection) -> tuple[int, int, dict]:
                 m["player_ca"], m["player_pa"],
                 m["club_threshold_for_request"],
                 m["level_fit"], m["level_fit_multiplier"],
+                m["market_match_score"],
             ))
 
     init_matches_table(con)
@@ -477,10 +693,13 @@ def build_matches(con: sqlite3.Connection) -> tuple[int, int, dict]:
             match_score_raw, match_score, tier_move, wage_feasibility_label,
             player_wage_pw_eur,
             player_ca, player_pa, club_threshold_for_request,
-            level_fit, level_fit_multiplier
-        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            level_fit, level_fit_multiplier,
+            market_match_score
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     """, rows_to_insert)
     con.commit()
+    # Convert the unrated_players set length for the stats return
+    stats["market_unrated_players_count"] = len(stats.get("market_unrated_players", set()))
     return len(rows_to_insert), len(rows_to_insert), stats
 
 
