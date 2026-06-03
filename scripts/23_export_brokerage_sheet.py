@@ -147,7 +147,14 @@ def build_rationale(seller: dict, buyer: dict, tier_move: str, headroom_eur: int
 
 
 def fetch_match_rows(con: sqlite3.Connection) -> list[dict]:
-    """Pull matches + all needed player / pressure fields for rationale building."""
+    """Pull matches + all needed player / pressure fields for rationale building.
+
+    Filter: match_score >= 10 — Sheet 1 is the Brokerage Engine view
+    (sellable_now-scoped, original score floor preserved). Market View match
+    rows (NULL match_score) and below-floor Brokerage rows that only
+    survived via the OR-floor against market_match_score are excluded.
+    The Streamlit UI is the surface for the wider Market View cohort.
+    """
     sql = """
         SELECT m.match_score, m.sellability_score, m.budget_fit,
                m.request_source, m.request_validated,
@@ -165,6 +172,7 @@ def fetch_match_rows(con: sqlite3.Connection) -> list[dict]:
         FROM matches m
         JOIN player_universe pu ON pu.player_id = m.player_id
         LEFT JOIN club_pressure cp ON cp.club_id = pu.parent_club_id
+        WHERE m.match_score >= 10
         ORDER BY m.match_score DESC, pu.name, m.match_score_raw DESC
     """
     rows = con.execute(sql).fetchall()

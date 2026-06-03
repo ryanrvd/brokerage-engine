@@ -68,6 +68,12 @@ WAGE_FEASIBILITY_INFEASIBLE = 0.0
 # isn't padded with noise. Set to 10/100 = 0.10 raw.
 MATCH_SCORE_FLOOR = 10.0
 
+# Market View score floor — lower than Brokerage because Market View can lift
+# matches above 100 via position tension + scarcity, so a score of 5 in
+# Market View represents the same "barely-worth-surfacing" frontier that 10
+# does in Brokerage. A match is kept if EITHER floor is satisfied.
+MARKET_SCORE_FLOOR = 5.0
+
 # Side-intrinsic buckets — position carries side info. Others pass any preferred_side.
 INTRINSIC_SIDE = {"LB": "Left", "RB": "Right", "LW": "Left", "RW": "Right"}
 
@@ -420,16 +426,85 @@ def _load_manual_wages() -> dict[int, float]:
     return out
 
 
-def build_matches(con: sqlite3.Connection) -> tuple[int, int, dict]:
-    """Returns (total_scored_pairs, total_retained_after_top3, stats)."""
+def build_cohort_unrated(con: sqlite3.Connection) -> int:
+    """Rebuild the UNRATED worklist: players with sellability_score > 50 but
+    no current_ability available (or status departed). Surfaces operationally
+    via Streamlit; rebuild every match engine run so it stays fresh.
+    """
+    import datetime as _dt
+    con.execute("DROP TABLE IF EXISTS cohort_unrated")
+    con.execute("""
+        CREATE TABLE cohort_unrated (
+            player_id          INTEGER PRIMARY KEY,
+            player_name        TEXT,
+            parent_club_name   TEXT,
+            position_bucket    TEXT,
+            age                INTEGER,
+            sellability_score  REAL,
+            league_id          TEXT,
+            reason             TEXT,
+            snapshot_date      TEXT
+        )
+    """)
+    today = _dt.date.today().isoformat()
+    # no_ca: sellability > 50 but no CA in player_ratings (or row missing)
+    con.execute("""
+        INSERT INTO cohort_unrated
+        SELECT pu.player_id, pu.name, pu.parent_club, pu.position_bucket,
+               pu.age, pu.sellability_score, pu.league_id,
+               CASE
+                 WHEN pr.status = 'departed' THEN 'departed'
+                 ELSE 'no_ca'
+               END AS reason,
+               ?
+        FROM player_universe pu
+        LEFT JOIN player_ratings pr ON pr.tm_player_id = pu.player_id
+        WHERE pu.sellability_score > 50
+          AND (pr.current_ability IS NULL OR pr.current_ability = 0)
+    """, (today,))
+    return con.execute("SELECT COUNT(*) FROM cohort_unrated").fetchone()[0]
 
-    # Pull sellable assets — same filter as Sheet 4 (script 10).
+
+def build_matches(con: sqlite3.Connection) -> tuple[int, int, dict]:
+    """Returns (total_scored_pairs, total_retained_after_top3, stats).
+
+    Cohort scope (Market View, per docs/market_view_match_formula.md §Cohort):
+        sellability_score > 50  AND  player_ratings.current_ability IS NOT NULL
+
+    Both scores computed per match row:
+      - match_score (Brokerage): NULL if player not in sellable_now status
+      - market_match_score: always computed per the Market View formula
+
+    Same matches table; two columns; sellable_now slice is the Brokerage
+    Engine view, full cohort is the Market View.
+    """
+    # Pull the wider Market View cohort. sellability_status pulled so we can
+    # tell which subset is also in the Brokerage Engine's sellable_now slice.
+    #
+    # Cohort = (Market View cohort) UNION (sellable_now cohort).
+    #   Market View: sellability_score > 50 AND has CA
+    #   Brokerage scope: every sellable_now player, regardless of sellability
+    #     score — these are the original-spec targeted cohort. Some have
+    #     scores below 50 (e.g. Kubo at 42.6 — sellable_now from the
+    #     classifier's rule path but didn't clear the 50 watermark). We must
+    #     keep them in the match engine to preserve the Brokerage view; their
+    #     market_match_score is computed alongside.
+    # UNRATED hard rule still applies in the per-pair loop.
     players = con.execute("""
         SELECT pu.player_id, pu.name, pu.age, pu.position_bucket,
                pu.current_tm_value_eur, pu.sellability_score, pu.league_id,
-               pu.current_club, pu.parent_club, pu.parent_club_id, pu.on_loan
+               pu.current_club, pu.parent_club, pu.parent_club_id, pu.on_loan,
+               pu.sellability_status
         FROM player_universe pu
-        WHERE pu.sellability_status = 'sellable_now'
+        WHERE (
+            (pu.sellability_score > 50
+             AND EXISTS (
+                 SELECT 1 FROM player_ratings
+                 WHERE tm_player_id = pu.player_id
+                   AND current_ability IS NOT NULL
+             ))
+            OR pu.sellability_status = 'sellable_now'
+        )
     """).fetchall()
 
     # Manual wage data (data/manual_wages.xlsx) — only populated for players
@@ -559,7 +634,9 @@ def build_matches(con: sqlite3.Connection) -> tuple[int, int, dict]:
 
     rows_to_insert: list[tuple] = []
     for p in players:
-        (pid, pname, page, pbucket, ptm, psell, pleague, pclub, pparent, pparent_id, ponloan) = p
+        (pid, pname, page, pbucket, ptm, psell, pleague, pclub, pparent,
+         pparent_id, ponloan, psell_status) = p
+        is_sellable_now = (psell_status == "sellable_now")
         stats["players_processed"] += 1
 
         if pbucket is None or ptm is None or ptm == 0:
@@ -635,7 +712,13 @@ def build_matches(con: sqlite3.Connection) -> tuple[int, int, dict]:
             # Scale to 0-100 to mirror match_score's range for UI consistency
             market_score = round(market_score_raw * 100.0, 1)
 
-            scored.append({
+            # Brokerage Engine match_score is meaningful only for sellable_now
+            # players (the targeted cohort). For wider Market View cohort
+            # members, match_score is NULL — the row exists for Market View
+            # only and shouldn't surface in Brokerage-default views.
+            brokerage_score = s["match_score"] if is_sellable_now else None
+
+            row = {
                 "player_id":     pid,
                 "buyer_request_id": rid,
                 "buyer_club_id": bcid,
@@ -652,13 +735,25 @@ def build_matches(con: sqlite3.Connection) -> tuple[int, int, dict]:
                 "club_threshold_for_request": threshold,
                 "market_match_score": market_score,
                 **s,
-            })
-        # Apply the score floor — drop the long tail of marginal matches
-        # (low sellability + inferred demand + tight budget = score < 10).
-        scored = [s for s in scored if s["match_score"] >= MATCH_SCORE_FLOOR]
+            }
+            row["match_score"] = brokerage_score
+            scored.append(row)
+        # Apply EITHER floor — keep if Brokerage match_score ≥ MATCH_SCORE_FLOOR
+        # (only meaningful for sellable_now players, NULL otherwise) OR if
+        # Market View market_match_score ≥ MARKET_SCORE_FLOOR. This preserves
+        # both lenses' coverage; rows that meet only the market floor will
+        # have NULL match_score.
+        def _keep(s):
+            ms = s.get("match_score")
+            mks = s.get("market_match_score")
+            brok_ok = (ms is not None and ms >= MATCH_SCORE_FLOOR)
+            mkt_ok = (mks is not None and mks >= MARKET_SCORE_FLOOR)
+            return brok_ok or mkt_ok
+        scored = [s for s in scored if _keep(s)]
         stats["pairs_after_score_floor"] += len(scored)
-        # Keep all surviving matches — no per-player cap.
-        scored.sort(key=lambda d: -d["match_score"])
+        # Sort by market_match_score (always non-null when row is kept) so
+        # the per-player loop ranking is consistent even for non-sellable_now.
+        scored.sort(key=lambda d: -(d.get("market_match_score") or 0))
         kept = scored if TOP_N_PER_PLAYER is None else scored[:TOP_N_PER_PLAYER]
         if kept:
             stats["players_with_any_match"] += 1
@@ -773,6 +868,10 @@ def main() -> None:
         sys.exit(f"Missing {config.SQLITE_FILE} — run 02→09 first.")
 
     with sqlite3.connect(config.SQLITE_FILE) as con:
+        n_unrated = build_cohort_unrated(con)
+        con.commit()
+        print(f"UNRATED worklist (cohort_unrated): {n_unrated} players")
+        print()
         n_total, n_retained, stats = build_matches(con)
 
         # Position breakdown.
@@ -780,13 +879,13 @@ def main() -> None:
             "SELECT position_bucket, COUNT(*) FROM matches GROUP BY position_bucket"
         ).fetchall())
 
-        # Top 20 by match_score.
+        # Top 20 by market_match_score (Market View — every match has one).
         top20 = con.execute("""
             SELECT m.*, pu.age, pu.parent_club, pu.parent_club_id, pu.on_loan,
                    pu.current_club, pu.league_id AS player_league_id
             FROM matches m
             JOIN player_universe pu ON pu.player_id = m.player_id
-            ORDER BY m.match_score DESC, m.player_name, m.match_score_raw DESC
+            ORDER BY m.market_match_score DESC NULLS LAST, m.player_name
             LIMIT 20
         """).fetchall()
         col_names = [d[0] for d in con.execute(
@@ -807,7 +906,7 @@ def main() -> None:
     print(f"   ↳ after budget:         {stats['pairs_after_budget']:>6}")
     print(f"   ↳ after side:           {stats['pairs_after_side']:>6}")
     print(f"   ↳ after league-tier:    {stats['pairs_after_tier']:>6}")
-    print(f"   ↳ after score floor ≥{int(MATCH_SCORE_FLOOR)}: {stats['pairs_after_score_floor']:>6}")
+    print(f"   ↳ after floor (brok≥{int(MATCH_SCORE_FLOOR)} OR mkt≥{MARKET_SCORE_FLOOR}): {stats['pairs_after_score_floor']:>6}")
     print(f"   ↳ retained:             {stats['pairs_retained']:>6}")
 
     print()
@@ -827,13 +926,17 @@ def main() -> None:
 
     print()
     print(bar)
-    print("Top 20 brokerage opportunities (sanity check before Sheet 1 export)")
+    print("Top 20 by market_match_score (Market View — comprehensive cohort)")
     print(bar)
-    print(f"  {'#':>2}  {'score':>5s}  {'player':28s} {'age':>3s} {'pos':5s}  "
+    print(f"  {'#':>2}  {'mkt':>6s}  {'brok':>6s}  {'player':28s} {'age':>3s} {'pos':5s}  "
           f"{'p_lg':4s} {'b_lg':4s}  {'TM':>6s}  {'max_fee':>8s}  buyer")
     for i, r in enumerate(top20, start=1):
         row = dict(zip(col_names, r))
-        print(f"  {i:>2}. {row['match_score']:>5.1f}  "
+        mkt = row.get("market_match_score")
+        brok = row.get("match_score")
+        mkt_str = f"{mkt:>6.1f}" if mkt is not None else "    —"
+        brok_str = f"{brok:>6.1f}" if brok is not None else "    —"
+        print(f"  {i:>2}. {mkt_str}  {brok_str}  "
               f"{(row['player_name'] or '')[:28]:28s} "
               f"{row['age']:>3}  {row['position_bucket']:5s}  "
               f"{row['player_league_id']:4s} {row['buyer_league_id']:4s}  "
@@ -843,14 +946,17 @@ def main() -> None:
 
     print()
     print(bar)
-    print("Top 3 brokerage rationales in full (by match_score)")
+    print("Top 3 rationales (by market_match_score)")
     print(bar)
     with sqlite3.connect(config.SQLITE_FILE) as con2:
         for i, r in enumerate(top20[:3], start=1):
             row = dict(zip(col_names, r))
             rationale = build_rationale(con2, row)
+            mkt = row.get("market_match_score") or 0
+            brok = row.get("match_score")
+            brok_str = f"{brok:.1f}" if brok is not None else "—"
             print(f"\n  {i}. {row['player_name']} ({row['age']}, {row['position_bucket']}) → "
-                  f"{row['buyer_club_name']}  [match_score = {row['match_score']:.1f}]")
+                  f"{row['buyer_club_name']}  [market={mkt:.1f}  brokerage={brok_str}]")
             print(f"     {rationale}")
 
 

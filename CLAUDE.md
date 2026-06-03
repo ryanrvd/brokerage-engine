@@ -597,6 +597,69 @@ The matcher and `~/market-movement-maps/` authenticate as the same `client_id` a
 
 ---
 
+## Dual-score architecture — Brokerage Engine vs Market View
+
+The `matches` table carries **two scores** per (player × buyer) row. They answer different questions and the UI toggles between them.
+
+| Column | View | Answers |
+|---|---|---|
+| `match_score` | Brokerage Engine | "Of the targeted sellable_now cohort, which (player × buyer) pairs surface as YP's mandate-priority moves?" |
+| `market_match_score` | Market View | "Of every player in the mandate-relevant cohort, which (player × buyer) pairs are most likely to actually happen this window?" |
+
+### Cohort scope
+
+The match engine (`scripts/22_match_engine.py`) iterates over the **UNION** of:
+
+1. **Market View cohort**: `sellability_score > 50 AND player has SciSports CA available`. Currently ~3,753 players. Comprehensive over the 13-league universe.
+2. **Brokerage cohort**: `sellability_status = 'sellable_now'` regardless of `sellability_score` — preserves the original targeted spec (e.g. Kubo at sellability 42.6 stays in because his classifier returned sellable_now from data_source='dcaribou' rules).
+
+Union → 3,818 players today.
+
+**Per match row:**
+- `match_score` is computed only if player is `sellable_now` (NULL otherwise). Scoring formula unchanged from Phase 3 (`sellability × demand_intensity × budget_fit × wage_feasibility × level_fit_multiplier × 100`).
+- `market_match_score` is computed for **every** match row per the 9-component formula in `docs/market_view_match_formula.md`. Scaled 0–~200; can exceed 100 when scarcity + position tension + valuation arbitrage compound.
+
+**Score floor:** a row is kept if EITHER `match_score >= 10` OR `market_match_score >= 5`. Keeps both lenses' coverage; rows that meet only the market floor have NULL match_score and surface in Market View only.
+
+### UNRATED hard rule
+
+Players without a SciSports CA (`player_ratings.current_ability IS NULL`) but with `sellability_score > 50` are **excluded from matches** and land in the `cohort_unrated` worklist table instead. This is an operational signal — closing the worklist closes the data debt. Today: 657 players, dominated by IT2 (151), ES2 (72), PO1 (70).
+
+### Match volumes (post-expansion)
+
+| Metric | Value |
+|---|---:|
+| Total match rows | **62,025** |
+| With `market_match_score` (Market View) | 62,025 |
+| With `match_score` (Brokerage Engine) | 2,100 |
+| Market-only rows | 59,925 |
+| UNRATED worklist size | 657 |
+| Players with ≥ 1 match | 2,781 |
+| Wall clock for full match engine run | < 1 second |
+
+### Brokerage Workbook (Sheet 1)
+
+`scripts/23_export_brokerage_sheet.py` filters on `match_score IS NOT NULL` — preserves the Brokerage Engine view as the canonical demo artefact. Market-View-only rows surface in the Streamlit UI, not the workbook.
+
+### Position tension multipliers (live data)
+
+| Position | Demand | Supply (weighted) | Ratio | Multiplier |
+|---|---:|---:|---:|---:|
+| GK | 127 | 248.6 | 0.51 | **0.7** |
+| CB | 199 | 419.9 | 0.47 | **0.7** |
+| LB | 194 | 160.7 | 1.21 | 1.0 |
+| RB | 166 | 182.6 | 0.91 | 1.0 |
+| DM | 104 | 158.7 | 0.66 | **0.7** |
+| CM | 190 | 277.6 | 0.68 | **0.7** |
+| AM | 64 | 138.2 | 0.46 | **0.7** |
+| **LW** | 204 | 152.2 | **1.34** | **1.4** |
+| RW | 197 | 151.8 | 1.30 | 1.0 (boundary) |
+| ST_CF | 212 | 293.6 | 0.72 | 1.0 |
+
+LW is the only tight market. RW sits exactly on the 1.3 threshold; rounding pushes it to 1.0 today.
+
+---
+
 ## Sci Sports talent layer
 
 User-curated CA (current ability) and PA (potential ability) ratings, manually entered and preserved across weekly TM refreshes. As of Day 8 they ALSO come from the SciSports API (script 30); manually-entered values always win on conflict.
