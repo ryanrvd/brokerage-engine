@@ -101,13 +101,13 @@ def last_permanent_fee(history: dict) -> tuple[int | None, date | None]:
 def main() -> None:
     with sqlite3.connect(config.SQLITE_FILE) as con:
         con.row_factory = sqlite3.Row
-        # Skip pl_squad_full players — they don't go through the filtered
+        # Skip tm_squad_scrape players — they don't go through the filtered
         # right_priced pipeline (TM kader has no fee data, and TM's JSON
         # transferHistory endpoint is currently blocked by CloudFront).
         rows = con.execute(
             "SELECT player_id, name, current_tm_value_eur, right_priced "
             "FROM player_universe "
-            "WHERE data_source != 'pl_squad_full' "
+            "WHERE data_source != 'tm_squad_scrape' "
             "ORDER BY player_id"
         ).fetchall()
     print(f"Universe: {len(rows)} players")

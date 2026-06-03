@@ -8,7 +8,7 @@ Process order — paranoid about the shared 1000-req/60s budget:
         (a) relegated cohort (mandate_priority_multiplier ≥ 1.3)
         (b) sellable_now players
         (c) sellable_with_caveat players
-        (d) everyone else with scisports_player_id and pl_squad_full
+        (d) everyone else with scisports_player_id and tm_squad_scrape
      If quota runs tight, processing halts cleanly and can resume next run.
   3. Per player:
         - Skip if player_ratings row is 'active' AND last_updated < 7 days old
@@ -79,7 +79,7 @@ def _candidate_queue(con: sqlite3.Connection,
                pu.sellability_status, pu.mandate_priority_multiplier,
                pu.parent_club_recently_relegated, pu.parent_club
         FROM player_universe pu
-        WHERE pu.data_source = 'pl_squad_full'
+        WHERE pu.data_source = 'tm_squad_scrape'
           AND pu.scisports_player_id IS NOT NULL
     """).fetchall()
 
@@ -284,7 +284,7 @@ def main() -> None:
         bands[q["priority_band"]] += 1
 
     print()
-    print(f"  pl_squad_full players with scisports_player_id: {len(queue) + skipped_fresh}")
+    print(f"  tm_squad_scrape players with scisports_player_id: {len(queue) + skipped_fresh}")
     print(f"  Skipped (already 'active' within {FRESH_TTL_DAYS}d):    {skipped_fresh}")
     print(f"  In refresh queue:                                {len(queue)}")
     print(f"    relegated cohort (priority 0):                 {bands[0]}")

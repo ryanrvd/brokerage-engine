@@ -74,7 +74,7 @@ def compute_sellability_status(
             return "sellable_now"
         return "sellable_with_caveat"
 
-    # For PL squad expansion players (pl_squad_full): evaluate each rule.
+    # For PL squad expansion players (tm_squad_scrape): evaluate each rule.
     rules: dict[str, bool | None] = {}
 
     if age is not None:

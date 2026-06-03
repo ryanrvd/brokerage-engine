@@ -1,7 +1,7 @@
-"""Step 29 — Link SciSports squad data onto pl_squad_full.
+"""Step 29 — Link SciSports squad data onto tm_squad_scrape.
 
 ZERO API calls. Reads the bridge file produced by Phase 2's resolver
-(data/scisports_pl_player_roster.json) and the pl_squad_full rows seeded by
+(data/scisports_pl_player_roster.json) and the tm_squad_scrape rows seeded by
 script 28 (TM scrape), then fuzzy-matches SciSports → TM by name + DOB and
 UPDATEs each TM row with the matched scisports_player_id.
 
@@ -9,7 +9,7 @@ Why local-only: Phase 2 already paid the API cost to capture the 572 PL
 players. Re-fetching here would burn the shared client_id budget for no
 new data. Phase 3's CA/PA refresh (script 30) is the only API-hitting step.
 
-Two side-effects on player_universe (data_source='pl_squad_full'):
+Two side-effects on player_universe (data_source='tm_squad_scrape'):
   • scisports_player_id      — populated where match succeeded
   • parent_club_recently_relegated, mandate_priority_multiplier — already
     set by 19_apply_league_overrides; this script doesn't touch them, but
@@ -134,9 +134,9 @@ def main() -> None:
                on_loan, current_club, league_id, data_source,
                parent_club_recently_relegated, mandate_priority_multiplier
         FROM player_universe
-        WHERE data_source = 'pl_squad_full'
+        WHERE data_source = 'tm_squad_scrape'
     """).fetchall()
-    print(f"pl_squad_full rows in DB: {len(tm_rows)}")
+    print(f"tm_squad_scrape rows in DB: {len(tm_rows)}")
 
     matched = 0
     by_kind: dict[str, int] = {}

@@ -1,10 +1,16 @@
 """
-Step 28 — Ingest full Premier League squads into player_universe.
+Step 28 — Ingest full club squads (kader + loans-out) for every demand-mapped
+league via Safari-exported TM session cookie.
 
-Uses a Safari-exported TM session cookie to bypass CloudFront bot detection.
-Scrapes two pages per PL club:
+Coverage: the 10 demand-mapped leagues in config.DEMAND_MAPPED_LEAGUES (PL +
+Championship + La Liga + Serie A + Ligue 1 + Ligue 2 + Bundesliga + Primeira
+Liga + Eredivisie + Belgian Pro League). ~172 clubs total. Two TM pages per
+club:
   - /kader  (squad page)  → current first-team players
-  - /leihspieleruebersicht (loans-out page) → players loaned out by the club
+  - /leihspieler (loans-out) → players loaned out by the club
+
+Resumable: status per (league, club) tracked in data/squad_scrape_plan.json
+so an interrupted run can pick up from the next pending club.
 
 Cookie workflow:
   1. Open https://www.transfermarkt.com in Safari
@@ -17,11 +23,14 @@ Cookie workflow:
 CLI flags:
   --validate-only     Test the cookie with one request, then exit
   --single-club NAME  Scrape one club only (e.g. --single-club arsenal)
+  --league CODE       Restrict to one league (e.g. --league GB2)
+  --plan-only         Build/refresh squad_scrape_plan.json and exit
 
 Pipeline position: after 07 + 19 (pre-08), before 08_compute_pressure.
 """
 
 import argparse
+import json
 import os
 import re
 import sqlite3
@@ -30,7 +39,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 import certifi
@@ -42,14 +51,18 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import config
 from _position_buckets import bucket_for
 
-PL_LEAGUE_ID = "GB1"
 SEASON = "2025"
 SLEEP_BETWEEN = 2.0
 CACHE_MAX_AGE_HOURS = 24
 
+# All demand-mapped leagues get kader + loans-out scrape. PL stays first so a
+# fresh cookie test exercises the historically-cached path.
+TARGET_LEAGUES = list(config.DEMAND_MAPPED_LEAGUES)
+
 CACHE_DIR = Path("data/tm_cache")
 CACHE_DIR.mkdir(parents=True, exist_ok=True)
 COOKIE_PATH = Path("data/tm_cookie.txt")
+PLAN_PATH = Path("data/squad_scrape_plan.json")
 _ssl_context = ssl.create_default_context(cafile=certifi.where())
 
 HEADERS = {
@@ -484,17 +497,10 @@ def parse_loans_out(html: str, parent_club_id: str, parent_club_name: str) -> li
     return rows_out
 
 
-# ─── PL club discovery ───────────────────────────────────────────────────────
+# ─── Club discovery + scrape plan ────────────────────────────────────────────
 
-def discover_pl_clubs() -> list[dict]:
-    with sqlite3.connect(config.SQLITE_FILE) as con:
-        real_pl = con.execute("""
-            SELECT club_id, club_name FROM senior_roster
-            WHERE league_id = ?
-            GROUP BY club_id, club_name HAVING COUNT(*) >= 20
-            ORDER BY club_name
-        """, (PL_LEAGUE_ID,)).fetchall()
-
+def _build_slug_map() -> dict[str, str]:
+    """tm club_id (str) → URL slug. Extracted from dcaribou's clubs.url field."""
     slug_map: dict[str, str] = {}
     try:
         src = duckdb.connect(config.DUCKDB_FILE, read_only=True)
@@ -507,21 +513,84 @@ def discover_pl_clubs() -> list[dict]:
         src.close()
     except Exception:
         pass
+    return slug_map
+
+
+def discover_clubs_for_league(league_id: str, slug_map: dict[str, str]) -> list[dict]:
+    """Return active clubs in the given league (post-override) with TM slugs.
+
+    Filter: clubs with ≥15 senior_roster players (threshold catches genuine
+    first teams across leagues of different size; lower than PL's 20 because
+    some smaller leagues report smaller rosters in dcaribou).
+    """
+    with sqlite3.connect(config.SQLITE_FILE) as con:
+        rows = con.execute("""
+            SELECT club_id, club_name FROM senior_roster
+            WHERE league_id = ?
+            GROUP BY club_id, club_name HAVING COUNT(*) >= 15
+            ORDER BY club_name
+        """, (league_id,)).fetchall()
 
     clubs: list[dict] = []
-    for cid, name in real_pl:
+    for cid, name in rows:
         slug = SLUG_OVERRIDES.get(str(cid)) or slug_map.get(str(cid))
         if not slug:
-            slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
+            slug = re.sub(r"[^a-z0-9]+", "-", (name or "").lower()).strip("-")
         clubs.append({"club_id": str(cid), "slug": slug, "name": name})
     return clubs
+
+
+def build_scrape_plan(leagues: list[str]) -> dict:
+    """Build/refresh data/squad_scrape_plan.json.
+
+    Preserves status='done' from a prior plan so resuming skips finished
+    clubs. New / unknown clubs default to 'pending'.
+    """
+    slug_map = _build_slug_map()
+    prior_status: dict[str, str] = {}
+    if PLAN_PATH.exists():
+        try:
+            prior = json.loads(PLAN_PATH.read_text(encoding="utf-8"))
+            for entries in (prior.get("leagues") or {}).values():
+                for e in entries:
+                    if e.get("status") == "done":
+                        prior_status[str(e.get("club_id"))] = "done"
+        except Exception:
+            pass
+
+    plan: dict[str, list[dict]] = {}
+    for lid in leagues:
+        clubs = discover_clubs_for_league(lid, slug_map)
+        plan[lid] = [{
+            "club_id": c["club_id"],
+            "club_name": c["name"],
+            "tm_url_slug": c["slug"],
+            "status": prior_status.get(c["club_id"], "pending"),
+        } for c in clubs]
+
+    PLAN_PATH.parent.mkdir(parents=True, exist_ok=True)
+    PLAN_PATH.write_text(json.dumps({
+        "built_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "leagues": plan,
+        "totals": {lid: len(clubs) for lid, clubs in plan.items()},
+    }, indent=2), encoding="utf-8")
+    return plan
+
+
+def _save_plan_status(plan: dict[str, list[dict]]) -> None:
+    """Re-serialize the plan to disk after a status mutation."""
+    PLAN_PATH.write_text(json.dumps({
+        "built_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "leagues": plan,
+        "totals": {lid: len(clubs) for lid, clubs in plan.items()},
+    }, indent=2), encoding="utf-8")
 
 
 # ─── Write to SQLite ─────────────────────────────────────────────────────────
 
 def insert_player(con: sqlite3.Connection, p: dict, parent_club_id: str,
-                  parent_club_name: str, snapshot: date,
-                  leverage_cutoff: date) -> bool:
+                  parent_club_name: str, parent_league_id: str,
+                  snapshot: date, leverage_cutoff: date) -> bool:
     contract_end = p["contract_end_date"]
     contract_leveraged = (
         1 if contract_end and contract_end <= leverage_cutoff
@@ -534,7 +603,7 @@ def insert_player(con: sqlite3.Connection, p: dict, parent_club_id: str,
         current_club = parent_club_name
         current_club_id = parent_club_id
 
-    league_display = config.LEAGUE_DISPLAY.get(PL_LEAGUE_ID, PL_LEAGUE_ID)
+    league_display = config.LEAGUE_DISPLAY.get(parent_league_id, parent_league_id)
 
     loan_end_str = (
         str(p["loan_end_date"]) if p.get("loan_end_date") else None
@@ -549,7 +618,7 @@ def insert_player(con: sqlite3.Connection, p: dict, parent_club_id: str,
                 current_club,
                 str(current_club_id) if current_club_id else None,
                 league_display,
-                PL_LEAGUE_ID,
+                parent_league_id,
                 None,                   # primary_position
                 p["sub_position"],
                 p["age"],
@@ -574,7 +643,7 @@ def insert_player(con: sqlite3.Connection, p: dict, parent_club_id: str,
                 parent_club_name,
                 str(parent_club_id),
                 p["on_loan"],
-                "pl_squad_full",
+                "tm_squad_scrape",
                 str(snapshot),
                 None,                   # sellability_status — set by 09
                 loan_end_str,
@@ -590,12 +659,64 @@ def insert_player(con: sqlite3.Connection, p: dict, parent_club_id: str,
 
 # ─── Main ────────────────────────────────────────────────────────────────────
 
+def _scrape_one_club(
+    con: sqlite3.Connection, club: dict, league_id: str, cookie: str,
+    snapshot: date, leverage_cutoff: date, existing_pids: set[int],
+) -> dict:
+    """Fetch + parse kader + leihspieler for a single club, INSERT OR IGNORE
+    new players. Returns counts for the summary.
+    """
+    cid, cslug, cname = club["club_id"], club["tm_url_slug"], club["club_name"]
+    try:
+        squad_html = fetch_squad_page(cid, cslug, cookie)
+        resolved_name, squad_rows = parse_squad(squad_html, cid)
+    except RuntimeError:
+        raise
+    except Exception as e:
+        print(f"      ! squad fetch failed: {type(e).__name__}: {e}")
+        resolved_name, squad_rows = cname, []
+
+    try:
+        loans_html = fetch_loans_out_page(cid, cslug, cookie)
+        loan_rows = parse_loans_out(loans_html, cid, resolved_name)
+    except RuntimeError:
+        raise
+    except Exception as e:
+        print(f"      ! loans fetch failed: {type(e).__name__}: {e}")
+        loan_rows = []
+
+    seen: set[int] = set()
+    inserted = 0
+    for p in squad_rows + loan_rows:
+        pid = p["player_id"]
+        if pid in seen:
+            continue
+        seen.add(pid)
+        if pid in existing_pids:
+            continue
+        ok = insert_player(con, p, cid, resolved_name, league_id,
+                           snapshot, leverage_cutoff)
+        if ok:
+            inserted += 1
+            existing_pids.add(pid)
+    return {
+        "squad_count": len(squad_rows),
+        "loans_count": len(loan_rows),
+        "inserted": inserted,
+        "club_name_resolved": resolved_name,
+    }
+
+
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Ingest full PL squads from TM")
+    parser = argparse.ArgumentParser(description="Ingest full club squads via TM kader scrape")
     parser.add_argument("--validate-only", action="store_true",
                         help="Test the cookie and exit")
     parser.add_argument("--single-club", type=str, default=None,
                         help="Scrape one club only (substring match on name)")
+    parser.add_argument("--league", type=str, default=None,
+                        help="Restrict to one league code (e.g. GB2)")
+    parser.add_argument("--plan-only", action="store_true",
+                        help="Build/refresh squad_scrape_plan.json and exit")
     args = parser.parse_args()
 
     cookie = load_cookie()
@@ -604,6 +725,18 @@ def main() -> None:
         ok = validate_cookie(cookie)
         sys.exit(0 if ok else 1)
 
+    # Build / refresh the scrape plan from current senior_roster + overrides
+    target_leagues = [args.league] if args.league else TARGET_LEAGUES
+    plan = build_scrape_plan(target_leagues)
+
+    if args.plan_only:
+        print(f"Plan written to {PLAN_PATH}")
+        for lid, clubs in plan.items():
+            n_done = sum(1 for c in clubs if c.get("status") == "done")
+            print(f"  {lid:5s} {config.LEAGUE_DISPLAY.get(lid, lid):28s}  "
+                  f"clubs={len(clubs):>3}  done={n_done}")
+        return
+
     print("Validating cookie...")
     if not validate_cookie(cookie):
         sys.exit(1)
@@ -611,15 +744,20 @@ def main() -> None:
 
     snapshot = config.SNAPSHOT_DATE
     leverage_cutoff = config.end_of_season_plus(snapshot, config.CONTRACT_LEVERAGED_YEARS)
-    pl_clubs = discover_pl_clubs()
 
+    # Apply --single-club filter
     if args.single_club:
         needle = args.single_club.lower()
-        pl_clubs = [c for c in pl_clubs if needle in c["name"].lower() or needle in c["slug"]]
-        if not pl_clubs:
-            sys.exit(f"No PL club matches '{args.single_club}'")
+        for lid in list(plan.keys()):
+            plan[lid] = [c for c in plan[lid]
+                         if needle in c["club_name"].lower() or needle in c["tm_url_slug"]]
+            if not plan[lid]:
+                del plan[lid]
+        if not plan:
+            sys.exit(f"No club matches '{args.single_club}'")
 
-    print(f"Scraping {len(pl_clubs)} PL club(s)...")
+    total_clubs = sum(len(v) for v in plan.values())
+    print(f"Scraping {total_clubs} club(s) across {len(plan)} league(s)…")
     print()
 
     with sqlite3.connect(config.SQLITE_FILE) as con:
@@ -627,90 +765,77 @@ def main() -> None:
             r[0] for r in con.execute("SELECT player_id FROM player_universe").fetchall()
         )
 
-    total_squad = 0
-    total_loans = 0
-    total_inserted = 0
-    total_skipped = 0
-    per_club: list[tuple[str, int, int, int]] = []
-    all_players: list[dict] = []
+    league_totals: dict[str, dict] = {}
+    grand_total_squad = 0
+    grand_total_loans = 0
+    grand_total_inserted = 0
 
     with sqlite3.connect(config.SQLITE_FILE) as con:
-        for club in pl_clubs:
-            cid, cslug, cname = club["club_id"], club["slug"], club["name"]
-            print(f"--- {cname} (id={cid}, slug={cslug}) ---")
-
-            try:
-                squad_html = fetch_squad_page(cid, cslug, cookie)
-                resolved_name, squad_rows = parse_squad(squad_html, cid)
-            except RuntimeError as e:
-                print(f"    ! FATAL: {e}")
-                sys.exit(1)
-            except Exception as e:
-                print(f"    ! squad page error: {type(e).__name__}: {e}")
-                resolved_name, squad_rows = cname, []
-            print(f"    squad: {len(squad_rows)} players")
-            total_squad += len(squad_rows)
-
-            try:
-                loans_html = fetch_loans_out_page(cid, cslug, cookie)
-                loan_rows = parse_loans_out(loans_html, cid, resolved_name)
-            except RuntimeError as e:
-                print(f"    ! FATAL: {e}")
-                sys.exit(1)
-            except Exception as e:
-                print(f"    ! loans page error: {type(e).__name__}: {e}")
-                loan_rows = []
-            print(f"    loans-out: {len(loan_rows)} players")
-            total_loans += len(loan_rows)
-
-            seen: set[int] = set()
-            club_inserted = 0
-            for p in squad_rows + loan_rows:
-                pid = p["player_id"]
-                if pid in seen:
+        for league_id in plan:
+            league_clubs = plan[league_id]
+            league_display = config.LEAGUE_DISPLAY.get(league_id, league_id)
+            print(f"=== {league_display} ({league_id}) — {len(league_clubs)} clubs ===")
+            l_squad = 0; l_loans = 0; l_inserted = 0; l_cached = 0; l_live = 0
+            for club in league_clubs:
+                if club.get("status") == "done":
+                    l_cached += 2  # both pages cached as done
                     continue
-                seen.add(pid)
-                all_players.append({**p, "parent_club": resolved_name, "parent_club_id": cid})
-                if pid in existing_pids:
-                    total_skipped += 1
-                    continue
-                ok = insert_player(con, p, cid, resolved_name, snapshot, leverage_cutoff)
-                if ok:
-                    club_inserted += 1
-                    existing_pids.add(pid)
+                kader_cache = CACHE_DIR / f"pl_kader_{club['club_id']}.html"
+                was_cached = _cache_is_fresh(kader_cache)
+                try:
+                    r = _scrape_one_club(
+                        con, club, league_id, cookie, snapshot,
+                        leverage_cutoff, existing_pids,
+                    )
+                except RuntimeError as e:
+                    print(f"    ! FATAL: {e}")
+                    _save_plan_status(plan)
+                    sys.exit(1)
+                club["status"] = "done"
+                club["scraped_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+                club["squad_count"] = r["squad_count"]
+                club["loans_count"] = r["loans_count"]
+                l_squad += r["squad_count"]
+                l_loans += r["loans_count"]
+                l_inserted += r["inserted"]
+                if was_cached:
+                    l_cached += 1
                 else:
-                    total_skipped += 1
-            total_inserted += club_inserted
-            per_club.append((cname, len(squad_rows), len(loan_rows), club_inserted))
-            print(f"    → inserted {club_inserted}, skipped {len(seen) - club_inserted}")
+                    l_live += 1
+                cname = (r["club_name_resolved"] or club["club_name"])[:34]
+                print(f"  [{cname:34s}]  squad={r['squad_count']:>3}  "
+                      f"loans={r['loans_count']:>3}  new={r['inserted']:>3}  "
+                      f"({'cached' if was_cached else 'live'})")
+                # Save plan incrementally so an interruption is resumable
+                _save_plan_status(plan)
+            print(f"  → {len(league_clubs)} clubs: {l_squad} players, "
+                  f"{l_loans} loaned-out, {l_cached} cached / {l_live} live")
+            print()
+            league_totals[league_id] = {
+                "clubs": len(league_clubs),
+                "squad": l_squad,
+                "loans": l_loans,
+                "inserted": l_inserted,
+            }
+            grand_total_squad += l_squad
+            grand_total_loans += l_loans
+            grand_total_inserted += l_inserted
 
         con.commit()
+    _save_plan_status(plan)
 
     bar = "─" * 80
-    print()
     print(bar)
-    print("PL Full Squad Ingestion — Summary")
+    print("Squad Ingestion — Summary")
     print(bar)
-    print(f"  Clubs scraped:          {len(per_club)}")
-    print(f"  Squad-page players:     {total_squad}")
-    print(f"  Loans-out players:      {total_loans}")
-    print(f"  New rows inserted:      {total_inserted}")
-    print(f"  Skipped (existing):     {total_skipped}")
-    print()
-    print(f"  {'club':40s} {'squad':>6s} {'loans':>6s} {'new':>5s}")
-    for name, sq, lo, ins in per_club:
-        print(f"  {name[:40]:40s} {sq:>6d} {lo:>6d} {ins:>5d}")
-
-    if args.single_club:
-        print()
-        print("Players found:")
-        print(f"  {'#':>3s}  {'name':30s} {'position':18s} {'age':>4s} {'MV':>8s} {'contract':>12s} {'loan':>5s}")
-        for i, p in enumerate(all_players, 1):
-            mv_str = f"€{p['current_tm_value_eur']/1e6:.1f}m" if p.get("current_tm_value_eur") else "—"
-            ce_str = str(p["contract_end_date"]) if p.get("contract_end_date") else "—"
-            loan_str = p.get("loan_club_name", "")[:20] if p["on_loan"] else ""
-            print(f"  {i:>3d}  {p['name'][:30]:30s} {(p['sub_position'] or ''):18s} "
-                  f"{p['age'] or '':>4} {mv_str:>8s} {ce_str:>12s} {loan_str}")
+    print(f"  {'League':6s} {'Display':28s} {'Clubs':>5s} {'Players':>8s} {'Loans':>5s} {'New':>5s}")
+    for lid, t in league_totals.items():
+        print(f"  {lid:6s} {config.LEAGUE_DISPLAY.get(lid, lid):28s} "
+              f"{t['clubs']:>5} {t['squad']:>8} {t['loans']:>5} {t['inserted']:>5}")
+    print(f"  {'TOTAL':6s} {'':28s} "
+          f"{sum(t['clubs'] for t in league_totals.values()):>5} "
+          f"{grand_total_squad:>8} {grand_total_loans:>5} {grand_total_inserted:>5}")
+    print(f"Scrape plan persisted to {PLAN_PATH}")
 
 
 if __name__ == "__main__":

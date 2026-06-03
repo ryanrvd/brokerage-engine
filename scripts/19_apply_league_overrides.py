@@ -110,6 +110,11 @@ def _load_overrides() -> list[dict]:
 # Tables to update: (table, league_col, lid_col, key_col)
 CASCADE_TABLES = [
     ("player_universe",   "league", "league_id", "current_club_id"),
+    # Additional cascade on parent_club_id catches loaned-out players whose
+    # current_club_id is a different (loan-destination) club. Without this,
+    # e.g. a Wolves loaned-out player would keep league_id='GB1' after Wolves
+    # is overridden to GB2.
+    ("player_universe",   "league", "league_id", "parent_club_id"),
     ("senior_roster",     "league", "league_id", "club_id"),
     ("club_pressure",     "league", "league_id", "club_id"),
     ("map_club_overview", "league", None,        "club_id"),

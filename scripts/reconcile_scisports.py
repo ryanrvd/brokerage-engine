@@ -1,14 +1,14 @@
 """
 Reconcile `data/scisports_ratings.xlsx` against the current player universe.
 
-Day 8 scope: every player in pl_squad_full (the TM-scraped PL squad universe)
+Day 8 scope: every player in tm_squad_scrape (the TM-scraped PL squad universe)
 PLUS the original sellable cohort (sellability_status = 'sellable_now') from
 all 19 leagues. Championship players added in a follow-up phase.
 
-Why scoped to pl_squad_full and not the broader player_universe: dcaribou's
+Why scoped to tm_squad_scrape and not the broader player_universe: dcaribou's
 current_club_name is "most recent club recorded", not "currently in squad".
 Mixing dcaribou-sourced PL rows into the xlsx pollutes it with retired and
-historical-association players. Only trust pl_squad_full for the
+historical-association players. Only trust tm_squad_scrape for the
 "currently in PL squad" classification. The sellable_now overlay ensures we
 keep coverage of non-PL clean targets the matcher cares about.
 
@@ -81,9 +81,9 @@ STATUS_ORDER = {"pending": 0, "active": 1, "departed": 2, "killed": 3}
 def get_current_cohort(con: sqlite3.Connection) -> dict[int, dict]:
     """Return {tm_player_id: {...}} for every player in scope.
 
-    Scope = pl_squad_full UNION sellability_status='sellable_now'.
+    Scope = tm_squad_scrape UNION sellability_status='sellable_now'.
 
-    pl_squad_full = current PL squad players (TM-scraped), including loaned-out.
+    tm_squad_scrape = current PL squad players (TM-scraped), including loaned-out.
     sellable_now overlay = preserves the prior cohort's coverage for the
     matcher's existing 19-league sellable set.
     """
@@ -95,7 +95,7 @@ def get_current_cohort(con: sqlite3.Connection) -> dict[int, dict]:
                pu.position_bucket, pu.age, pu.on_loan, pu.data_source,
                pu.sellability_status
         FROM player_universe pu
-        WHERE pu.data_source = 'pl_squad_full'
+        WHERE pu.data_source = 'tm_squad_scrape'
            OR pu.sellability_status IN ('sellable_now', 'out_of_scope')
     """).fetchall()
 

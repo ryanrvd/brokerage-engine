@@ -505,9 +505,9 @@ After a code change or fresh dcaribou snapshot:
 .venv/bin/python scripts/19_apply_league_overrides.py    # pre-08: corrects senior_roster + player_universe + recently-relegated/promoted flags
 .venv/bin/python scripts/08_compute_pressure.py
 .venv/bin/python scripts/11_patch_loans.py
-.venv/bin/python scripts/13_scrape_fees.py               # skips pl_squad_full (no fee data via TM kader)
+.venv/bin/python scripts/13_scrape_fees.py               # skips tm_squad_scrape (no fee data via TM kader)
 .venv/bin/python scripts/09_compute_sellability.py       # tags every player with sellability_status (sellable_now / with_caveat / not / out_of_scope)
-.venv/bin/python scripts/29_ingest_squads_via_api.py     # local-only — links scisports_player_id onto pl_squad_full rows via name+DOB
+.venv/bin/python scripts/29_ingest_squads_via_api.py     # local-only — links scisports_player_id onto tm_squad_scrape rows via name+DOB
 .venv/bin/python scripts/05_excel_export.py
 .venv/bin/python scripts/10_export_pressure_sheets.py
 # ── Day 4 demand-side layer ────────────────────────────────────────────────
@@ -563,7 +563,7 @@ Hull City's `club_pressure` row was never seeded (dcaribou's last record for Hul
 | `scripts/_scisports_cache.py` | SHA-256 cache layer. TTLs: 30d leagues/teams, 24h rosters, 7d sciskill. Cache hits cost zero quota. |
 | `scripts/_scisports_resolve_pl_teams.py` | Phase-2 helper — paginates `/Leagues` and `/Teams` to capture the 20 PL teams (saved to `data/scisports_team_ids.json`), then walks each team's `/Players?CurrentTeamIds=…` for the full bridge (saved to `data/scisports_pl_player_roster.json`). |
 | `scripts/_scisports_seed_cache.py` | Optional helper that seeds the cache with manual xlsx CA/PA. Phase-3 audit revealed the original name-token fallback caused collisions (Juanlu Sánchez → Robert Sánchez, Julio Enciso → Julio Soler). Matching now **requires DOB**; no name-only fallback. |
-| `scripts/29_ingest_squads_via_api.py` | Local-only — name+DOB-matches SciSports bridge entries to `pl_squad_full` rows and writes `scisports_player_id`. No API calls. 527/623 = 85% link rate; unmatched are mostly U23/academy. |
+| `scripts/29_ingest_squads_via_api.py` | Local-only — name+DOB-matches SciSports bridge entries to `tm_squad_scrape` rows and writes `scisports_player_id`. No API calls. 527/623 = 85% link rate; unmatched are mostly U23/academy. |
 | `scripts/30_refresh_player_metrics.py` | The API-hitting CA/PA fetch. Queue order: relegated cohort first → sellable_now → sellable_with_caveat → other. Skips any player whose `player_ratings` row is `active` AND `last_updated` within 7d. Pacing enforced by the client. Writes back to both `player_ratings` and the xlsx (preserving manual values + notes). |
 
 ### Pacing rules — binding floors, not aspirations
@@ -585,7 +585,7 @@ The matcher and `~/market-movement-maps/` authenticate as the same `client_id` a
 
 ### Phase 3 verified results (snapshot 2026-05-29)
 - 20 PL teams resolved (SciSports IDs 505–545); bridge captured 572 players.
-- 527 `pl_squad_full` rows linked to a `scisports_player_id` (84.6% match rate; unmatched almost entirely U23/academy).
+- 527 `tm_squad_scrape` rows linked to a `scisports_player_id` (84.6% match rate; unmatched almost entirely U23/academy).
 - 491 PL squad players refreshed via the API or cache (49 originally-seeded entries were invalidated after the seed-mismatch audit, then re-fetched live).
 - Min `X-RateLimit-Remaining` seen during Phase 3 = **983** — never approached the 500 soft, 300 hard, or 100 emergency thresholds.
 - Manual-vs-API cross-check (Jake O'Brien, the only sci-linked manual entry where xlsx and DB diverged): Δca = -1.6, Δpa = +0.9 — both within ±2.0 tolerance.
