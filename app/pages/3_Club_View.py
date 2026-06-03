@@ -52,8 +52,7 @@ if not raw_cid:
                cp.total_pressure_score, cp.manager_change_flag,
                (SELECT COUNT(*) FROM player_universe pu
                 WHERE pu.parent_club_id = cp.club_id
-                  AND (pu.right_priced=1 OR pu.finished_product=1
-                       OR pu.finished_product IS NULL OR pu.contract_leveraged=1)) AS sellable_count,
+                  AND pu.sellability_status = 'sellable_now') AS sellable_count,
                (SELECT COUNT(*) FROM map_club_requests WHERE club_id = cp.club_id) AS requests_count,
                (SELECT COUNT(*) FROM matches WHERE buyer_club_id = cp.club_id) AS matches_as_buyer
         FROM club_pressure cp
@@ -357,6 +356,9 @@ def _badge(text: str, bg: str, fg: str) -> str:
 
 
 badges: list[str] = []
+# Recently relegated is the dominant seller-side signal — surface it first.
+if pressure.get("recently_relegated") == 1:
+    badges.append(_badge("⬇️ Recently Relegated", "#fecaca", "#7f1d1d"))
 if _parachute_year is not None:
     badges.append(_badge(f"🪂 Parachute Year {_parachute_year}", "#fee2e2", "#7f1d1d"))
 if pressure.get("public_must_sell_flag") == 1:
@@ -366,9 +368,6 @@ if pressure.get("manager_change_flag") == 1:
 _cl_score = pressure.get("contract_leverage_score") or 0
 if _cl_p75 is not None and _cl_score >= _cl_p75 and _cl_score > 0:
     badges.append(_badge("📊 Contract Leverage", "#fef3c7", "#78350f"))
-_ns_score = pressure.get("net_spend_score") or 0
-if _ns_p75 is not None and _ns_score >= _ns_p75 and _ns_score > 0:
-    badges.append(_badge("💰 Net Spend Pressure", "#fef3c7", "#78350f"))
 _so_score = pressure.get("squad_oversupply_score") or 0
 if (_so_p75 is not None and _so_score >= _so_p75
         and _so_score > 0 and _oversupplied_count >= 3):
@@ -420,17 +419,29 @@ st.markdown("")
 # ─── Selling Pressure breakdown ─────────────────────────────────────────────
 
 st.markdown("### Selling pressure breakdown")
+_floor_note = (
+    " · <span style='color:#b45309;'>recently relegated — pressure floor of 65 applies</span>"
+    if pressure.get("recently_relegated") == 1 else ""
+)
 st.markdown(
     f"<div style='color:#6b7280; font-style:italic;'>"
-    f"Total: <strong style='color:#111827;'>{total_pressure:.1f} / 100</strong></div>",
+    f"Total: <strong style='color:#111827;'>{total_pressure:.1f} / 100</strong>{_floor_note}</div>",
     unsafe_allow_html=True,
 )
 
 cl_s = pressure.get("contract_leverage_score") or 0
 so_s = pressure.get("squad_oversupply_score") or 0
-ns_s = pressure.get("net_spend_score") or 0
 mc_f = pressure.get("manager_change_flag") == 1
 ps_f = pressure.get("public_must_sell_flag") == 1
+releg = pressure.get("recently_relegated") == 1
+
+# Relegation component (tier-scaled; PL = 100 today) + weighted contributions.
+releg_score = 100.0 if releg else 0.0
+c_releg = 0.40 * releg_score
+c_must  = 0.20 * (100.0 if ps_f else 0.0)
+c_cl    = 0.15 * cl_s
+c_so    = 0.15 * so_s
+c_mgr   = 0.10 * (100.0 if mc_f else 0.0)
 
 scoring_basis = pressure.get("scoring_basis") or ""
 oversupply_text = ""
@@ -438,31 +449,66 @@ if isinstance(scoring_basis, str) and "oversupplied:" in scoring_basis:
     oversupply_text = scoring_basis.split("oversupplied:", 1)[1].strip()
 
 
-def _line(label: str, val: str, weight: str, body: str) -> str:
+def _contract_leverage_copy(score: float) -> str:
+    """Band-based — describes THIS club's actual contract situation, not generic."""
+    if score < 25:
+        return ("Most of the squad is on longer contracts — little run-down pressure. "
+                "Contract timing isn't forcing sales here.")
+    if score < 50:
+        return ("About a third of the first team (minutes-weighted) is in the final two "
+                "years of contract — some sell-now pressure, but most of the squad is "
+                "tied down on longer deals.")
+    if score < 70:
+        return ("Around half the first team is running down contracts — strong "
+                "sell-now-or-lose-value pressure, and buyers gain leverage on price.")
+    return ("A majority of the squad is in the final two years — acute Bosman risk; "
+            "the club must move players or lose them for free.")
+
+
+def _squad_overload_copy(score: float, buckets: str) -> str:
+    if score <= 0:
+        return "No positions overstocked."
+    suffix = f" ({buckets})" if buckets else ""
+    if score <= 20:
+        return f"One to two positions overstocked — a minor logjam{suffix}."
+    return (f"Several positions overstocked — significant surplus the club is "
+            f"motivated to clear{suffix}.")
+
+
+def _line(label: str, score_str: str, contribution: float, weight: str, body: str) -> str:
     return (
         f"<div style='padding:10px 0; border-bottom:1px solid #f3f4f6;'>"
         f"<div style='display:flex; justify-content:space-between; align-items:baseline;'>"
         f"<div style='font-weight:600;'>{label}</div>"
         f"<div style='color:#6b7280; font-size:0.85rem;'>{weight}</div></div>"
-        f"<div style='font-size:0.9rem; color:#374151;'>{val} — {body}</div>"
+        f"<div style='font-size:0.9rem; color:#374151;'>"
+        f"{score_str} · contributes <strong>{contribution:.1f}</strong> — {body}</div>"
         f"</div>"
     )
 
 
+_releg_body = (
+    "Relegated from the Premier League end of 25/26. The dominant seller-side "
+    "signal — wage bill no longer matches Championship revenue, players push to "
+    "stay at the top level, structurally forced to sell this window."
+    if releg else
+    "Not recently relegated — no relegation pressure on this club."
+)
+
 pressure_html = (
     f"<div style='background:#f9fafb; border:1px solid #e5e7eb; border-radius:6px; padding:12px;'>"
-    + _line("Contract pressure", f"<strong>{cl_s:.0f} / 100</strong>", "weight 20%",
-            "Minutes-weighted share of senior squad in final 2 years of contract.")
-    + _line("Squad overload", f"<strong>{so_s:.0f} / 100</strong>", "weight 20%",
-            f"Oversupplied positions: {oversupply_text}" if oversupply_text else "No buckets above oversupply threshold.")
-    + _line("Spending pressure", f"<strong>{ns_s:.0f} / 100</strong>", "weight 20%",
-            "Net spend headroom relative to league cohort (higher = bigger net buyer → more pressure to recoup).")
-    + _line("Manager change", "✓" if mc_f else "✗", "weight 15%",
-            "Flag set — manager change confirmed in manual_flags.xlsx."
-            if mc_f else "No manager-change signal.")
-    + _line("Known must-sell", "✓" if ps_f else "✗", "weight 25%",
-            "Flag set — FFP / parachute / parent-stress signal confirmed in manual_flags.xlsx."
-            if ps_f else "No public must-sell flag.")
+    + _line("Recent relegation", f"<strong>{releg_score:.0f} / 100</strong>", c_releg, "weight 40%",
+            _releg_body)
+    + _line("Known must-sell", "flag ON" if ps_f else "flag OFF", c_must, "weight 20%",
+            "Publicly signalling a need to sell: PSR/FFP, parachute reset, or parent-company stress."
+            if ps_f else "No public must-sell flag set.")
+    + _line("Contract leverage", f"<strong>{cl_s:.0f} / 100</strong>", c_cl, "weight 15%",
+            _contract_leverage_copy(cl_s))
+    + _line("Squad overload", f"<strong>{so_s:.0f} / 100</strong>", c_so, "weight 15%",
+            _squad_overload_copy(so_s, oversupply_text))
+    + _line("Manager change", "flag ON" if mc_f else "flag OFF", c_mgr, "weight 10%",
+            "Manager/sporting-director change confirmed — regime change typically triggers squad churn."
+            if mc_f else "No managerial change flagged.")
     + "</div>"
 )
 st.markdown(pressure_html, unsafe_allow_html=True)

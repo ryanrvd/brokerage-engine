@@ -7,22 +7,27 @@ Writes: club_pressure rows updated with all five components, total_pressure_scor
         scoring_basis. Also assigns position_bucket on senior_roster.
 
 Components (weighted to 0-100 total):
-  1. Contract leverage (20%) — % of senior squad in final 2 years.
+  1. Recent relegation (40%) — DOMINANT seller-side signal. 100 if the club was
+       relegated end of last season, else 0. Tier-scaled by the league relegated
+       FROM (today all flagged relegations are from the Premier League → 100).
+       Recently-relegated clubs also get a hard pressure FLOOR of 65: relegation
+       alone keeps a club above the non-relegated field before any manual flag.
+  2. Public must-sell flag (20%) — manual boolean × 100 (PSR/parachute/parent-stress).
+  3. Contract leverage (15%) — % of senior squad in final 2 years.
        Top tier:  minutes-weighted (minutes share of leveraged players).
        2nd tier:  headcount-weighted (no minutes data); scoring_basis flags this.
-  2. Squad oversupply  (20%) — count of buckets over threshold ÷ 10 × 100.
+  4. Squad oversupply (15%) — count of buckets over threshold ÷ 10 × 100.
        Bucket thresholds:
          GK ≥4 | CB ≥5 | LB ≥3 | RB ≥3 | AM ≥3 | LW ≥3 | RW ≥3 | ST_CF ≥4
        DM/CM combined rule: both ≥3 → both fire; otherwise neither fires.
-  3. Net spend (20%) — parse clubs.net_transfer_record (TM's pre-rolled string).
-       NEGATIVE record = net buyer → score on this component.
-       POSITIVE/zero  = net seller → 0.
-       Normalised within each league: |net| ÷ max(|net|) × 100.
-       2nd tier: 0 (no data), scoring_basis flags this.
-  4. Manager change flag (15%) — manual boolean × 100 from CSV.
-  5. Public must-sell flag (25%) — manual boolean × 100 from CSV.
+  5. Manager change flag (10%) — manual boolean × 100.
 
-Total = 0.20·C1 + 0.20·C2 + 0.20·C3 + 0.15·C4 + 0.25·C5.
+Total = 0.40·relegation + 0.20·must_sell + 0.15·contract_lev + 0.15·oversupply
+        + 0.10·manager_change, then max(total, 65) if recently relegated.
+
+Net spend (formerly 20%) is still COMPUTED and stored in net_spend_score for
+reference, but no longer contributes to the total — its "net buyers score high"
+logic was backwards for a seller-pressure score.
 
 Manual flags storage: data/manual_flags.xlsx (was CSV pre-Day 4; see 18_manual_flags_excel.py).
   - Seeded on first run with every club at 0/0.
@@ -56,12 +61,23 @@ OVERSUPPLY_THRESHOLDS: dict[str, int] = {
 COMBINED_RULE = ("DM", "CM")
 
 WEIGHTS = {
-    "contract_leverage": 0.20,
-    "squad_oversupply":  0.20,
-    "net_spend":         0.20,
-    "manager_change":    0.15,
-    "public_must_sell":  0.25,
+    "recent_relegation": 0.40,
+    "public_must_sell":  0.20,
+    "contract_leverage": 0.15,
+    "squad_oversupply":  0.15,
+    "manager_change":    0.10,
 }
+
+# Recently-relegated clubs get a guaranteed pressure floor — relegation alone
+# should keep a club above the non-relegated field even before any other signal.
+RELEGATION_FLOOR = 65.0
+
+# Relegation component score (0-100), scaled by the tier the club dropped FROM.
+# Today every flagged relegation is from the Premier League (the biggest revenue
+# cliff), so all resolve to 100. When European relegations are loaded, scale by
+# relegated-from league (other top-5 → 85, other first division → 67, etc.) by
+# capturing the source league at override time and mapping it here.
+RELEGATION_TIER_SCORE_DEFAULT = 100.0
 
 
 # ─── Helpers ────────────────────────────────────────────────────────────────────
@@ -422,10 +438,11 @@ def main() -> None:
 
         # 6. Compose total + scoring_basis per club; write back.
         clubs_in_cp = con.execute("""
-            SELECT club_id, league_id FROM club_pressure
+            SELECT club_id, league_id, COALESCE(recently_relegated, 0)
+            FROM club_pressure
         """).fetchall()
         updates = []
-        for cid, lid in clubs_in_cp:
+        for cid, lid, releg in clubs_in_cp:
             cl_score, cl_basis = cl_scores.get(cid, (0.0, "no squad data"))
             so_score, so_buckets = so_scores.get(cid, (0.0, []))
             if lid in external_ids:
@@ -436,13 +453,20 @@ def main() -> None:
                 ns_basis = ""
             mc = flags.get(cid, {}).get("manager_change", 0)
             ps = flags.get(cid, {}).get("public_must_sell", 0)
+            # Relegation is the dominant term; tier-scaled (PL → 100 today).
+            releg_score = RELEGATION_TIER_SCORE_DEFAULT if releg else 0.0
             total = (
-                WEIGHTS["contract_leverage"] * cl_score
-                + WEIGHTS["squad_oversupply"] * so_score
-                + WEIGHTS["net_spend"] * ns_score
-                + WEIGHTS["manager_change"] * (mc * 100.0)
+                WEIGHTS["recent_relegation"] * releg_score
                 + WEIGHTS["public_must_sell"] * (ps * 100.0)
+                + WEIGHTS["contract_leverage"] * cl_score
+                + WEIGHTS["squad_oversupply"] * so_score
+                + WEIGHTS["manager_change"] * (mc * 100.0)
             )
+            # Relegation floor — a recently-relegated club cannot score below the
+            # floor, guaranteeing it clears the non-relegated field even before
+            # any manual flag is set.
+            if releg:
+                total = max(total, RELEGATION_FLOOR)
             basis_parts = [p for p in (cl_basis, ns_basis) if p]
             if so_buckets:
                 basis_parts.append(f"oversupplied: {', '.join(so_buckets)}")
