@@ -15,6 +15,8 @@ db/*.db-journal
 db/*.db-wal
 db/*.db-shm
 !db/yatin.db
+# Manual pre-phase DB snapshots (kept locally as fallback; never committed)
+db/*.pre*
 
 # Large regeneratable data artefacts
 # transfermarkt-datasets.duckdb (~193 MB) is downloaded fresh by scripts/01_download.py
@@ -23,6 +25,8 @@ data/transfermarkt-datasets.duckdb
 *.duckdb.wal
 # tm_cache/ (~90 MB, 800+ files) is rebuilt by scrape scripts 06/07/11/13
 data/tm_cache/
+# scisports_cache/ (~16 MB, ~900 files) is rebuilt by the SciSports API client
+data/scisports_cache/
 
 # Runtime artefacts produced by the pipeline (preserved on disk for recovery,
 # not version control). Spec for these lives in CLAUDE.md "Known issues".

@@ -149,7 +149,7 @@ Per-club score 0-100, five weighted components:
 | 4 | Manager change flag | 15% | manual, from `data/manual_flags.csv` |
 | 5 | Public must-sell flag | 20% | manual, from `data/manual_flags.csv` (FFP/PSR/parachute/parent stress) |
 
-### Sellability formula (Day 5 — additive rebalance)
+### Sellability formula (Day 5 additive + 2026-06-04 age multiplier)
 
 ```
 finished_product_value = 1.0 (true) | 0.5 (NULL / unknown) | 0.0 (false)
@@ -158,9 +158,23 @@ player_quality = (right_priced + contract_leveraged + finished_product_value) / 
 additive   = player_quality × 50 + (parent_club.total_pressure_score / 100) × 50
 floor      = contract_leveraged × finished_product_value × 50    ← Bosman safety net
 loan_bonus = 15 if (on_loan=1 AND finished_product=1) else 0
+raw        = max(additive, floor) + loan_bonus
 
-sellability = min(100, max(additive, floor) + loan_bonus)
+sellability = min(100, raw × age_multiplier(age))
 ```
+
+**age_multiplier** (mirrors `market_match_score` bands in `docs/market_view_match_formula.md`):
+
+| Age band | Multiplier | Rationale |
+|---|---:|---|
+| ≤ 25 | 1.00 | Peak resale window — no dampening |
+| 26-29 | 0.85 | Mature pro — value still high but past curve |
+| 30-32 | 0.60 | Senior, declining curve |
+| 33+ | 0.35 | Bosman-risk window; price ceiling collapses |
+
+`age IS NULL → 1.0` (neutral). Added 2026-06-04 to prevent 35+ contract-leveraged free-agents-in-waiting from topping sellability rankings on the strength of `contract_leveraged + parent pressure` alone. Same bands apply downstream in `market_match_score` so the two layers stay consistent across the brokerage and market lenses.
+
+**Imminent Free Agent exclusion (2026-06-04, `IMMINENT_FA_WINDOW_DAYS = 180`):** a player whose registered `contract_end_date` falls within 180 days of `config.SNAPSHOT_DATE` is flagged `is_imminent_free_agent = 1` on `player_universe` and their `sellability_status = 'imminent_fa'`. Sellability score is forced to **0.0** (overriding the additive formula entirely), and they are EXCLUDED from `scripts/22_match_engine.py`'s cohort — they don't enter the matches table at all. Rationale: a player within 6 months of contract end can sign a Bosman pre-contract with any club and leave on a free, so they're not a fee-bearing brokerage opportunity. Surfaced separately in Club View's "Imminent Free Agents" panel as possible player-side mandate opportunities. The `cohort_unrated` worklist also skips IFAs (no point fetching CA/PA for someone who can't sell).
 
 **Why additive (Day 5 change from Day 3.6's multiplicative form):** the earlier formula `quality × (pressure/100) × 100` made pressure a multiplier on quality, collapsing scores for high-quality players at moderate-pressure clubs. A diagnostic of the Day 5 zero-match cohort surfaced 27 named sale-this-window candidates (Tzolis, Akliouche, Verbruggen, Kubo, Lukeba, Schade, Beier, Svensson, Pavlovic, etc.) all stuck at sellability 13-30 — below the score floor — because their parent clubs aren't in crisis even though the players are obvious moves. Football's transfer market does not gate on contract-leveraged status; a good bid moves a player whose owner needs cash or wants a sale. The additive form gives quality and pressure each up to 50 points, honestly reflecting independent contribution.
 
@@ -549,11 +563,12 @@ Cascaded onto every `player_universe` row via the parent club:
 | Column | Value | Meaning |
 |---|---|---|
 | `parent_club_recently_relegated INTEGER` | 0 / 1 | Denormalised flag for fast queries |
-| `mandate_priority_multiplier REAL` | **1.3** | Parent recently relegated (Wolves/Burnley/West Ham). Elevated mandate priority — squads more valuable than typical relegated cohort, structural sell pressure |
-| | **1.1** | Parent recently promoted (Coventry/Ipswich/Hull). Strengthening; more selective on outbound |
-| | **1.0** | Default — current PL or any other cohort |
+| `mandate_priority_multiplier REAL` | **1.3** | Parent recently relegated (Wolves/Burnley/West Ham + 10 European). Elevated sell-side mandate priority — squads more valuable than typical relegated cohort, structural sell pressure |
+| | **1.0** | Default for everyone else, INCLUDING recently-promoted clubs |
 
-Hull City's `club_pressure` row was never seeded (dcaribou's last record for Hull is the 2016 PL season). The override CSV still applies the GB1 tag to Hull's TM-scraped players, which carry the multiplier on `player_universe`. Full coverage lands when the Championship bridge extension lands in a follow-up.
+**Why promoted clubs no longer carry a sell-side multiplier (changed 2026-06-04):** recently-promoted clubs are *strengthening* — they're strategic buyers entering top-flight budgets, not mandate sellers. Boosting their squad's sell-side priority overweighted players that aren't actually moving. Promoted clubs are surfaced on the BUYER side instead, via Mandate Territory's "promoted-buyer panel" which lists their stated requests + relegated→promoted pathway candidates (e.g. Burnley → Coventry-style moves).
+
+Hull City's `club_pressure` row was never seeded (dcaribou's last record for Hull is the 2016 PL season). The override CSV still applies the GB1 tag to Hull's TM-scraped players. Full coverage lands when the Championship bridge extension lands in a follow-up.
 
 ### SciSports API integration
 

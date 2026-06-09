@@ -125,6 +125,31 @@ def init_matches_table(con: sqlite3.Connection) -> None:
             -- Market View score (docs/market_view_match_formula.md). Computed
             -- side-by-side with match_score; UI sidebar toggles which one ranks.
             market_match_score    REAL,
+            -- Per-component multipliers used to compute market_match_score.
+            -- Persisted so the UI can render a Methodology cell showing the
+            -- arithmetic chain rather than recomputing on the fly. Added 2026-06-05.
+            age_mult              REAL,            -- 1.0 / 0.85 / 0.60 / 0.35 (age band)
+            demand_term_mult      REAL,            -- 1.0 / 0.75 / 0.5 (agent / intel / inferred)
+            demand_tier_label     TEXT,            -- 'Agent/YES' | 'Intel/NO' | 'Inferred' | …
+            level_market_mult     REAL,            -- 1.0 / 0.7 / 0.35 — Market View level multiplier
+            pathway_mult          REAL,            -- pathway plausibility multiplier
+            pathway_label         TEXT,            -- '2. Bundesliga → Premier League upward' etc.
+            scarcity_mult         REAL,            -- ~0.5–1.5
+            valuation_mult        REAL,            -- ~0.6–1.4
+            tension_mult          REAL,            -- per-position supply/demand multiplier
+            tension_ratio         REAL,            -- raw demand/supply ratio that produced tension_mult
+            -- Dual-gap level fit (2026-06-05): replaces ON_LEVEL/UPSIDE/BELOW.
+            -- Multiplier looked up from a 7-band table on (gap_pa, gap_ca)
+            -- where gap = club_median_ca − player rating. Same multiplier
+            -- applies to both Brokerage match_score and Market market_match_score.
+            level_fit_gap_ca      REAL,            -- club_median_ca − player_ca
+            level_fit_gap_pa      REAL,            -- club_median_ca − player_pa
+            -- Financial fit (2026-06-05): budget_fit × wage_feasibility — the
+            -- pillar the market formula consumes. Persisting it so the
+            -- Methodology cell can show one number that, multiplied through
+            -- the chain, reconciles to market_match_score within rounding.
+            financial_fit_mult    REAL,
+            financial_fit_label   TEXT,            -- 'above indicative' | 'at indicative' | 'stretch fit' | 'below threshold'
             UNIQUE(player_id, buyer_request_id)
         )
     """)
@@ -134,29 +159,62 @@ def init_matches_table(con: sqlite3.Connection) -> None:
 
 
 # ─── Sci Sports level-fit ────────────────────────────────────────────────────
-# Stage 1 derivation rule: every buyer request is assumed to be a FIRST-TEAM
-# level requirement. `map_club_requests` doesn't carry a per-request level
-# column today (only club-level thresholds exist on map_club_overview); the
-# user's sellable cohort is the first-team prospect band by design, so this
-# default is defensible and uniform. Stage 2 adds an explicit `level_required`
-# column to the workbook — see BACKLOG.
+# Stage 1 (retired 2026-06-05) used an ON_LEVEL/UPSIDE/BELOW classification
+# against a hand-set club_threshold_for_request column. Phase A.8.7 replaces
+# both Brokerage and Market View level-fit logic with a single continuous
+# dual-gap curve anchored on `club_pressure.club_median_ca` (the median CA
+# across the buyer's senior squad). gap_pa is the dominant signal — if the
+# player's *peak ability* is well below the buyer's median, the move is
+# unrealistic regardless of CA. gap_ca refines the upside ranges.
+#
+# Same multiplier applies to BOTH Brokerage match_score and Market
+# market_match_score so the two engines stay coherent at this layer.
+LEVEL_FIT_GAP_BANDS = (
+    # (gap_pa_min, gap_pa_max, gap_ca_min, gap_ca_max, multiplier, label)
+    # gap_pa > 10: peak well below level — unrealistic
+    ( 10.001, float("inf"), float("-inf"), float("inf"), 0.10,
+       "peak below level — unrealistic"),
+    # gap_pa 5..10: peak below — stretch
+    (  5.001, 10.000,        float("-inf"), float("inf"), 0.30,
+       "peak below level — stretch"),
+    # gap_pa 0..5: peak at level
+    (  0.001,  5.000,        float("-inf"), float("inf"), 0.55, "peak at level"),
+    # gap_pa <= 0 → split by gap_ca tiers
+    (float("-inf"), 0.000,   12.001, float("inf"),         1.20, "big upside"),
+    (float("-inf"), 0.000,    5.001, 12.000,               1.15, "upside"),
+    (float("-inf"), 0.000,   -5.000,  5.000,               1.05, "on level, room to grow"),
+    (float("-inf"), 0.000,   float("-inf"), -5.001,        1.00,
+       "player above level — step down for the player"),
+)
+
+
+def compute_level_fit_dual_gap(player_ca: float | None,
+                                 player_pa: float | None,
+                                 club_median_ca: float | None
+                                 ) -> tuple[float, str, float | None, float | None]:
+    """Look up dual-gap level fit. Returns (multiplier, label, gap_ca, gap_pa).
+
+    NULL CA, PA or club_median_ca → returns (0.85, 'rating unknown', None, None).
+    Same scale used by both Brokerage and Market View scoring formulas.
+    """
+    if player_ca is None or player_pa is None or club_median_ca is None:
+        return 0.85, "rating unknown", None, None
+    gap_ca = float(club_median_ca) - float(player_ca)
+    gap_pa = float(club_median_ca) - float(player_pa)
+    for pa_lo, pa_hi, ca_lo, ca_hi, mult, label in LEVEL_FIT_GAP_BANDS:
+        if pa_lo <= gap_pa <= pa_hi and ca_lo <= gap_ca <= ca_hi:
+            return mult, label, gap_ca, gap_pa
+    # Boundary edge case — should never hit. Fall back to "on level".
+    return 1.05, "on level, room to grow", gap_ca, gap_pa
+
+
+# Legacy ON_LEVEL/UPSIDE/BELOW multiplier tables retained for back-compat with
+# any test fixtures that still reference them. Live engine paths now use
+# compute_level_fit_dual_gap.
 LEVEL_FIT_MULTIPLIERS = {
-    "ON_LEVEL": 1.20,
-    "UPSIDE":   1.05,
-    "BELOW":    0.85,
-    "UNRATED":  1.00,
+    "ON_LEVEL": 1.20, "UPSIDE": 1.05, "BELOW": 0.85, "UNRATED": 1.00,
 }
-
-
-# ─── Market View components (docs/market_view_match_formula.md) ─────────────
-# Multipliers per the spec; UNRATED hard rule means UNRATED matches do not
-# enter the matches table at all (skipped in build_matches, tracked separately
-# for the review worklist).
-MARKET_LEVEL_FIT = {
-    "ON_LEVEL": 1.00,
-    "UPSIDE":   0.70,
-    "BELOW":    0.35,
-}
+MARKET_LEVEL_FIT = {"ON_LEVEL": 1.00, "UPSIDE": 0.70, "BELOW": 0.35}
 
 # Age multiplier — first-order viability dampener
 def market_age_multiplier(age: int | None) -> float:
@@ -460,6 +518,7 @@ def build_cohort_unrated(con: sqlite3.Connection) -> int:
         FROM player_universe pu
         LEFT JOIN player_ratings pr ON pr.tm_player_id = pu.player_id
         WHERE pu.sellability_score > 50
+          AND COALESCE(pu.is_imminent_free_agent, 0) = 0
           AND (pr.current_ability IS NULL OR pr.current_ability = 0)
     """, (today,))
     return con.execute("SELECT COUNT(*) FROM cohort_unrated").fetchone()[0]
@@ -490,14 +549,22 @@ def build_matches(con: sqlite3.Connection) -> tuple[int, int, dict]:
     #     keep them in the match engine to preserve the Brokerage view; their
     #     market_match_score is computed alongside.
     # UNRATED hard rule still applies in the per-pair loop.
-    players = con.execute("""
+    # Imminent Free Agents (is_imminent_free_agent = 1) are EXCLUDED from
+    # match generation entirely — they can sign Bosman pre-contracts and are
+    # not fee-bearing brokerage opportunities. See scripts/09_compute_sellability.py.
+    # Cohort: Mandate-relevant ≥ MANDATE_COHORT_SELLABILITY_FLOOR (35 today;
+    # lowered from 50 in Phase A.8.7 so the matched_now slice surfaces enough
+    # players to satisfy non-crisis clubs like Sunderland's promoted squad)
+    # OR the targeted sellable_now slice. IFAs excluded — they're Bosman-eligible.
+    players = con.execute(f"""
         SELECT pu.player_id, pu.name, pu.age, pu.position_bucket,
                pu.current_tm_value_eur, pu.sellability_score, pu.league_id,
-               pu.current_club, pu.parent_club, pu.parent_club_id, pu.on_loan,
-               pu.sellability_status
+               pu.current_club, pu.parent_club, pu.parent_club_id, pu.current_club_id,
+               pu.on_loan, pu.sellability_status
         FROM player_universe pu
-        WHERE (
-            (pu.sellability_score > 50
+        WHERE COALESCE(pu.is_imminent_free_agent, 0) = 0
+          AND (
+            (pu.sellability_score >= {config.MANDATE_COHORT_SELLABILITY_FLOOR}
              AND EXISTS (
                  SELECT 1 FROM player_ratings
                  WHERE tm_player_id = pu.player_id
@@ -525,14 +592,84 @@ def build_matches(con: sqlite3.Connection) -> tuple[int, int, dict]:
         ).fetchall():
             player_ratings[int(pid)] = (ca, pa)
 
-    # Club-level first-team CA thresholds (Stage 1: every request defaults to
-    # first-team level). Keyed by club_id as TEXT (matches map_club_overview).
-    club_thresholds: dict[str, float] = {}
-    for cid, threshold in con.execute(
-        "SELECT club_id, sci_first_team_level FROM map_club_overview "
-        "WHERE sci_first_team_level IS NOT NULL"
-    ).fetchall():
-        club_thresholds[str(cid)] = float(threshold)
+    # Club-level CA thresholds — persisted as `matches.club_threshold_for_request`
+    # for UI tooltips + the Brokerage-side level_fit_multiplier. Switched in
+    # 2026-06-09 from `map_club_overview.sci_first_team_level` (manual workbook
+    # with duplicate-club_id collisions — Real Madrid was inheriting Real
+    # Oviedo's threshold via id 418) to the engine-computed
+    # `club_pressure.club_median_ca`. Same value used for the dual-gap math
+    # downstream so the displayed threshold and the level-fit scoring share
+    # one source. Computed AFTER the median update block below; that update
+    # block must run first.
+    club_thresholds: dict[str, float] = {}  # populated post-median block
+
+    # Phase A.8.7 + 2026-06-09: dual-gap level fit anchors on club_median_ca —
+    # median CA across the *active first-team* slice of each buyer's
+    # senior_roster (joined to player_ratings + player_universe).
+    #
+    # Active filter (avoids loanee / academy / fringe dilution at clubs with
+    # deep youth systems — Chelsea, Brighton, Real Madrid Castilla etc.):
+    #   • pu.current_club_id = pu.parent_club_id    (not on loan)
+    #   • pu.minutes_share_pct >= 10                 (meaningful playing time)
+    #
+    # If fewer than 5 players survive the active filter, fall back to the
+    # unfiltered senior_roster median (small / loan-heavy clubs).
+    def _compute_medians(active_only: bool) -> dict[str, tuple[float, int]]:
+        where_active = ""
+        if active_only:
+            where_active = """
+              AND EXISTS (SELECT 1 FROM player_universe pu
+                          WHERE pu.player_id = sr.player_id
+                            AND pu.current_club_id = pu.parent_club_id
+                            AND COALESCE(pu.minutes_share_pct, 0) >= 10)
+            """
+        rows = con.execute(f"""
+            WITH club_cas AS (
+                SELECT sr.club_id, pr.current_ability AS ca
+                FROM senior_roster sr
+                JOIN player_ratings pr ON pr.tm_player_id = sr.player_id
+                WHERE pr.current_ability IS NOT NULL
+                  {where_active}
+            ),
+            ordered AS (
+                SELECT club_id, ca, COUNT(*) OVER (PARTITION BY club_id) AS n,
+                       ROW_NUMBER() OVER (PARTITION BY club_id ORDER BY ca) AS rn
+                FROM club_cas
+            )
+            SELECT club_id, AVG(ca) AS median_ca, MAX(n) AS n_rated
+            FROM ordered
+            WHERE rn IN ((n + 1) / 2, (n + 2) / 2)
+            GROUP BY club_id
+        """).fetchall()
+        return {str(cid): (float(med), int(n)) for (cid, med, n) in rows if med is not None}
+
+    active_medians   = _compute_medians(active_only=True)
+    fallback_medians = _compute_medians(active_only=False)
+
+    club_median_ca_map: dict[str, float] = {}
+    n_fallback = 0
+    for cid, (med, n) in active_medians.items():
+        if n >= 5:
+            club_median_ca_map[cid] = med
+    for cid, (med, n) in fallback_medians.items():
+        if cid in club_median_ca_map:
+            continue
+        if n >= 3:
+            club_median_ca_map[cid] = med
+            n_fallback += 1
+
+    con.execute("UPDATE club_pressure SET club_median_ca = NULL")
+    con.executemany(
+        "UPDATE club_pressure SET club_median_ca = ? WHERE cast(club_id AS TEXT) = ?",
+        [(v, k) for k, v in club_median_ca_map.items()],
+    )
+    print(f"club_median_ca: active-filter {len(active_medians)} clubs; "
+          f"fallback used for {n_fallback} clubs; total persisted {len(club_median_ca_map)}")
+
+    # Populate club_thresholds from the median map (single source of truth for
+    # both the displayed `club_threshold_for_request` and the dual-gap level-fit
+    # multiplier — eliminates the workbook duplicate-club_id collision risk).
+    club_thresholds = dict(club_median_ca_map)
 
     # ─── Market View pre-loads ─────────────────────────────────────────────
     # Cohort stats per position (scarcity_term)
@@ -590,33 +727,57 @@ def build_matches(con: sqlite3.Connection) -> tuple[int, int, dict]:
     for r in requests:
         reqs_by_bucket.setdefault(r[4], []).append(r)
 
-    # ─── Position tension multiplier ───────────────────────────────────────
-    # ratio = demand_count / sellability_weighted_supply_count, per position.
-    # Demand = number of buyer requests across all leagues at that position.
-    # Supply = sum of (sellability_score/100) over Market-View cohort
-    #           (sellability > 50 with CA available) at that position.
+    # ─── Position tension multiplier (Phase A.8.7 — raw counts) ──────────
+    # Numerator: raw count of buyer requests at this position, from the UNION
+    # of map_club_requests + inferred_club_requests. NO 0.4 weighting on
+    # inferred — a request is a request for tension purposes (the 0.4 stays
+    # in the per-pair demand multiplier chain).
+    # Denominator: raw count of cohort-gated players at this position
+    # (sellability >= MANDATE_COHORT_SELLABILITY_FLOOR OR sellable_now,
+    # AND NOT imminent_fa, AND with a CA available).
     demand_by_pos: dict[str, int] = {}
-    for req in requests:
-        demand_by_pos[req[4]] = demand_by_pos.get(req[4], 0) + 1
+    for pos, n in con.execute("""
+        SELECT position_bucket, COUNT(*) FROM (
+            SELECT position_bucket FROM map_club_requests
+              WHERE position_bucket IS NOT NULL
+            UNION ALL
+            SELECT position_bucket FROM inferred_club_requests
+              WHERE position_bucket IS NOT NULL
+        )
+        GROUP BY position_bucket
+    """).fetchall():
+        demand_by_pos[pos] = int(n)
 
-    supply_weighted_by_pos: dict[str, float] = {}
-    for pos, w in con.execute("""
-        SELECT pu.position_bucket, SUM(pu.sellability_score / 100.0)
+    supply_by_pos: dict[str, int] = {}
+    for pos, n in con.execute(f"""
+        SELECT pu.position_bucket, COUNT(*)
         FROM player_universe pu
         JOIN player_ratings pr ON pr.tm_player_id = pu.player_id
-        WHERE pu.sellability_score > 50
-          AND pr.current_ability IS NOT NULL
+        WHERE pr.current_ability IS NOT NULL
           AND pu.position_bucket IS NOT NULL
+          AND COALESCE(pu.is_imminent_free_agent, 0) = 0
+          AND (
+            pu.sellability_score >= {config.MANDATE_COHORT_SELLABILITY_FLOOR}
+            OR pu.sellability_status = 'sellable_now'
+          )
         GROUP BY pu.position_bucket
     """).fetchall():
-        supply_weighted_by_pos[pos] = float(w or 0)
+        supply_by_pos[pos] = int(n)
 
     tension_mult_by_pos: dict[str, float] = {}
-    for pos in set(demand_by_pos) | set(supply_weighted_by_pos):
+    tension_ratio_by_pos: dict[str, float] = {}
+    print()
+    print("Position tension (raw demand / cohort-gated supply):")
+    print(f"  {'pos':<6} {'demand':>7} {'supply':>7} {'ratio':>7} {'mult':>6}")
+    for pos in sorted(set(demand_by_pos) | set(supply_by_pos)):
         d = demand_by_pos.get(pos, 0)
-        s = supply_weighted_by_pos.get(pos, 0.0)
-        ratio = (d / s) if s > 0 else (10.0 if d > 0 else 1.0)  # avoid divide-by-zero
-        tension_mult_by_pos[pos] = market_tension_multiplier(ratio)
+        s = supply_by_pos.get(pos, 0)
+        ratio = (d / s) if s > 0 else (10.0 if d > 0 else 1.0)
+        mult = market_tension_multiplier(ratio)
+        tension_mult_by_pos[pos] = mult
+        tension_ratio_by_pos[pos] = ratio
+        print(f"  {pos:<6} {d:>7} {s:>7} {ratio:>7.2f} {mult:>6.2f}")
+    print()
 
     stats = {
         "players_processed":        0,
@@ -635,7 +796,7 @@ def build_matches(con: sqlite3.Connection) -> tuple[int, int, dict]:
     rows_to_insert: list[tuple] = []
     for p in players:
         (pid, pname, page, pbucket, ptm, psell, pleague, pclub, pparent,
-         pparent_id, ponloan, psell_status) = p
+         pparent_id, pcurrent_id, ponloan, psell_status) = p
         is_sellable_now = (psell_status == "sellable_now")
         stats["players_processed"] += 1
 
@@ -643,11 +804,24 @@ def build_matches(con: sqlite3.Connection) -> tuple[int, int, dict]:
             stats["players_with_zero_match"] += 1
             continue
 
+        # Pre-compute the player's home-club ids as strings for the self-match
+        # exclusion below. parent_club_id covers ownership ("Wolves can't buy
+        # a Wolves-owned player"); current_club_id covers loan-in ("Sparta
+        # can't buy a player they already have on loan").
+        _self_ids = {str(pparent_id) if pparent_id is not None else None,
+                     str(pcurrent_id) if pcurrent_id is not None else None}
+        _self_ids.discard(None)
+
         candidates = reqs_by_bucket.get(pbucket, [])
         scored: list[dict] = []
         for req in candidates:
             (rid, bcid, bname, bleague, _bucket, side, max_fee, max_wage, source, validated) = req
             stats["pairs_position_matched"] += 1
+            # Self-match exclusion (2026-06-09): a club is never a candidate
+            # buyer for a player they already own (parent) or have on loan
+            # (current). Same id on both sides → skip.
+            if bcid is not None and str(bcid) in _self_ids:
+                continue
             # Conservative filter: buyer must demonstrate ≥ MIN_BROKERAGE_FEE
             # spending intent. We allow stretching below player TM at the
             # scoring layer (budget_fit), but a club with €5m max_fee isn't
@@ -665,24 +839,38 @@ def build_matches(con: sqlite3.Connection) -> tuple[int, int, dict]:
             stats["pairs_after_tier"] += 1
             p_ca, p_pa = player_ratings.get(pid, (None, None))
             threshold = club_thresholds.get(str(bcid))
+            club_med_ca = club_median_ca_map.get(str(bcid))
             s = score_pair(ptm, psell, max_fee, source, validated,
                            player_wage_pw=player_wages.get(pid),
                            buyer_max_wage_pw=max_wage,
                            player_ca=p_ca, player_pa=p_pa,
                            club_threshold=threshold)
 
-            # ── Market View score (UNRATED hard rule) ──────────────────────
-            # Per docs/market_view_match_formula.md: UNRATED matches do NOT
-            # enter the matches table. Skip and track for the review worklist.
-            if s["level_fit"] == "UNRATED":
-                stats["market_unrated_skipped"] += 1
+            # Dual-gap level fit — Phase A.8.7. Same multiplier applies to BOTH
+            # Brokerage and Market View. Rating-unknown rows still enter the
+            # matches table (mult = 0.85) — the UNRATED hard-skip is retired.
+            lvl_mult, lvl_label, gap_ca, gap_pa = compute_level_fit_dual_gap(
+                p_ca, p_pa, club_med_ca
+            )
+            if lvl_label == "rating unknown":
                 stats["market_unrated_players"].add(pid)
-                continue
+
+            # Override the score_pair Brokerage match_score with dual-gap level fit.
+            # Brokerage chain: sell_term × demand × budget × wage × level_mult × 100.
+            sell_term = float(s["sellability_term"])
+            di = float(s["demand_intensity"])
+            budget = float(s["budget_fit"])
+            wage = float(s["wage_feasibility"])
+            brokerage_raw = sell_term * di * budget * wage * lvl_mult
+            s["match_score"] = round(brokerage_raw * 100.0, 1)
+            s["match_score_raw"] = round(brokerage_raw, 4)
+            s["level_fit"] = lvl_label
+            s["level_fit_multiplier"] = lvl_mult
 
             sellability_pillar = (psell or 0.0) / 100.0
             age_mult = market_age_multiplier(page)
             demand_t = market_demand_term(source, validated)
-            level_t = MARKET_LEVEL_FIT.get(s["level_fit"], 0.35)
+            level_t = lvl_mult   # dual-gap multiplier is the level term for Market too
             financial_t = float(s["budget_fit"]) * float(s["wage_feasibility"])
             pathway_t = market_pathway_score(pleague, bleague)
             tension_m = tension_mult_by_pos.get(pbucket, 1.0)
@@ -718,6 +906,52 @@ def build_matches(con: sqlite3.Connection) -> tuple[int, int, dict]:
             # only and shouldn't surface in Brokerage-default views.
             brokerage_score = s["match_score"] if is_sellable_now else None
 
+            # Demand tier label — matches the workbook source/validated combo
+            # the user sees on Sheet 5. "Agent/YES", "Intel/NO", "Inferred" etc.
+            _src = (source or "").strip()
+            _val = (validated or "").strip().upper()
+            if _src == "Agent":
+                demand_tier = f"Agent/{_val or 'NULL'}"
+            elif _src == "Intel":
+                demand_tier = f"Intel/{_val or 'NULL'}"
+            elif _src == "Inferred":
+                demand_tier = "Inferred"
+            else:
+                demand_tier = "Unknown"
+
+            # Pathway label — full English league names + direction
+            # e.g. "2. Bundesliga → Premier League upward".
+            _pf = LEAGUE_TIER_LABEL.get(pleague)
+            _pt = LEAGUE_TIER_LABEL.get(bleague)
+            _pf_name = config.LEAGUE_DISPLAY.get(pleague, pleague or "—")
+            _pt_name = config.LEAGUE_DISPLAY.get(bleague, bleague or "—")
+            if _pf and _pt:
+                if _TIER_RANK[_pt] > _TIER_RANK[_pf]:
+                    _dir = "upward"
+                elif _TIER_RANK[_pt] < _TIER_RANK[_pf]:
+                    _dir = "downward"
+                else:
+                    _dir = "lateral"
+                pathway_label = f"{_pf_name} → {_pt_name} {_dir}"
+            else:
+                pathway_label = f"{_pf_name} → {_pt_name}"
+
+            # Financial-fit pillar = budget_fit × wage_feasibility.
+            # The label describes the budget_fit band — the dominant signal
+            # (wage_feasibility is a constant 0.7 today; will become real once
+            # data/manual_wages.xlsx is populated per player).
+            _bf = float(s.get("budget_fit", 0.0))
+            _wf = float(s.get("wage_feasibility", 0.7))
+            financial_fit_mult = round(_bf * _wf, 3)
+            if _bf >= 0.80:
+                financial_fit_label = "above indicative"
+            elif _bf >= 0.50:
+                financial_fit_label = "at indicative"
+            elif _bf > 0.0:
+                financial_fit_label = "stretch fit"
+            else:
+                financial_fit_label = "below threshold"
+
             row = {
                 "player_id":     pid,
                 "buyer_request_id": rid,
@@ -734,6 +968,21 @@ def build_matches(con: sqlite3.Connection) -> tuple[int, int, dict]:
                 "player_pa": p_pa,
                 "club_threshold_for_request": threshold,
                 "market_match_score": market_score,
+                # Persisted component multipliers — feed the UI Methodology cell.
+                "age_mult":           round(age_mult, 3),
+                "demand_term_mult":   round(demand_t, 3),
+                "demand_tier_label":  demand_tier,
+                "level_market_mult":  round(level_t, 3),
+                "pathway_mult":       round(pathway_t, 3),
+                "pathway_label":      pathway_label,
+                "scarcity_mult":      round(scarcity_t, 3),
+                "valuation_mult":     round(valuation_t, 3),
+                "tension_mult":       round(tension_m, 3),
+                "tension_ratio":      round(tension_ratio_by_pos.get(pbucket, 1.0), 3),
+                "financial_fit_mult": financial_fit_mult,
+                "financial_fit_label": financial_fit_label,
+                "level_fit_gap_ca":   round(gap_ca, 2) if gap_ca is not None else None,
+                "level_fit_gap_pa":   round(gap_pa, 2) if gap_pa is not None else None,
                 **s,
             }
             row["match_score"] = brokerage_score
@@ -775,6 +1024,12 @@ def build_matches(con: sqlite3.Connection) -> tuple[int, int, dict]:
                 m["club_threshold_for_request"],
                 m["level_fit"], m["level_fit_multiplier"],
                 m["market_match_score"],
+                m.get("age_mult"), m.get("demand_term_mult"), m.get("demand_tier_label"),
+                m.get("level_market_mult"), m.get("pathway_mult"), m.get("pathway_label"),
+                m.get("scarcity_mult"), m.get("valuation_mult"),
+                m.get("tension_mult"), m.get("tension_ratio"),
+                m.get("level_fit_gap_ca"), m.get("level_fit_gap_pa"),
+                m.get("financial_fit_mult"), m.get("financial_fit_label"),
             ))
 
     init_matches_table(con)
@@ -789,8 +1044,13 @@ def build_matches(con: sqlite3.Connection) -> tuple[int, int, dict]:
             player_wage_pw_eur,
             player_ca, player_pa, club_threshold_for_request,
             level_fit, level_fit_multiplier,
-            market_match_score
-        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            market_match_score,
+            age_mult, demand_term_mult, demand_tier_label,
+            level_market_mult, pathway_mult, pathway_label,
+            scarcity_mult, valuation_mult, tension_mult, tension_ratio,
+            level_fit_gap_ca, level_fit_gap_pa,
+            financial_fit_mult, financial_fit_label
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     """, rows_to_insert)
     con.commit()
     # Convert the unrated_players set length for the stats return

@@ -78,6 +78,7 @@ def fetch_rows():
                 cp.total_pressure_score AS owning_club_must_sell_score
             FROM player_universe pu
             LEFT JOIN club_pressure cp ON cp.club_id = pu.parent_club_id
+            WHERE pu.brokerage_eligible = 1
             ORDER BY pu.league, pu.current_tm_value_eur DESC, pu.name
         """).fetchall()
 

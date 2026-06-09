@@ -85,6 +85,34 @@ def country_for_league(code: str | None) -> tuple[str, str]:
     return LEAGUE_COUNTRY.get(code, ("", ""))
 
 
+# Country → ordered list of (league_code, display_name) for that country's
+# covered leagues. Single source of truth for fork-page card rendering and
+# any other UI that wants leagues grouped by nation. Order: tier-1 first,
+# tier-2 second; countries follow the same Premier League → MLS reading order
+# the CLAUDE.md table uses.
+LEAGUE_DISPLAY_BY_COUNTRY: list[tuple[str, list[tuple[str, str]]]] = [
+    ("England",     [("GB1", "Premier League"),       ("GB2", "Championship")]),
+    ("Spain",       [("ES1", "La Liga"),              ("ES2", "La Liga 2")]),
+    ("Italy",       [("IT1", "Serie A"),              ("IT2", "Serie B")]),
+    ("Germany",     [("L1",  "Bundesliga"),           ("L2",  "2. Bundesliga")]),
+    ("France",      [("FR1", "Ligue 1"),              ("FR2", "Ligue 2")]),
+    ("Netherlands", [("NL1", "Eredivisie")]),
+    ("Portugal",    [("PO1", "Primeira Liga")]),
+    ("Belgium",     [("BE1", "Belgian Pro League")]),
+    ("Türkiye",     [("TR1", "Süper Lig")]),
+    ("Denmark",     [("DK1", "Danish Superliga")]),
+    ("Scotland",    [("SC1", "Scottish Premiership")]),
+    ("Greece",      [("GR1", "Super League Greece")]),
+    ("USA",         [("MLS1", "MLS")]),
+    ("Saudi Arabia", [("SA1", "Saudi Pro League")]),
+]
+
+
+def league_display_name(code: str | None) -> str:
+    """Alias for `league_name` used by the fork-page mapping."""
+    return league_name(code)
+
+
 def talent_band(ca: float | None) -> str:
     """Sci Sports CA → interpretive band label (display only). Bands are
     fixed thresholds on the CA scale; matching always uses the raw CA value."""

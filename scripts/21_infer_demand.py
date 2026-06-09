@@ -119,11 +119,17 @@ def build_inferred_demand(con: sqlite3.Connection) -> tuple[int, dict[str, int],
     to_insert: list[tuple] = []
     snapshot = str(config.SNAPSHOT_DATE)
 
+    # Phase A.8.7: every club must have at least minimal buyer presence in
+    # either map_club_requests or inferred_club_requests. Track which clubs
+    # have explicit demand at any bucket so that any clubs with zero presence
+    # afterwards get filled with their two weakest-headcount buckets.
+    clubs_with_explicit: set[str] = {cid for (cid, _b) in explicit_pairs}
+    clubs_filled_via_thin: set[str] = set()
+
     for club_id, club_name, league_id in clubs:
         tier = config.LEAGUE_TIERS.get(league_id)
         if tier is None:
             continue
-        # Per-club budget signal beats tier default
         max_fee = overview_budget.get(club_id)
         budget_source = "overview"
         if max_fee is None or max_fee == 0:
@@ -132,7 +138,7 @@ def build_inferred_demand(con: sqlite3.Connection) -> tuple[int, dict[str, int],
 
         for bucket, threshold in THIN_THRESHOLDS.items():
             if (club_id, bucket) in explicit_pairs:
-                continue  # explicit demand already exists for this (club, bucket)
+                continue
             hc = headcount_idx.get((club_id, bucket), 0)
             if hc <= threshold:
                 to_insert.append((
@@ -143,6 +149,44 @@ def build_inferred_demand(con: sqlite3.Connection) -> tuple[int, dict[str, int],
                 ))
                 per_bucket_counts[bucket] += 1
                 budget_source_counts[budget_source] += 1
+                clubs_filled_via_thin.add(str(club_id))
+
+    # Phase A.8.7 floor: every club must have at least minimal buyer presence.
+    # For clubs with zero explicit map_club_requests AND zero thin-bucket
+    # inferred requests, generate inferred requests for the two weakest
+    # buckets (lowest headcount). This guarantees `neither` column = 0 in
+    # the per-league coverage audit.
+    n_zero_filled = 0
+    for club_id, club_name, league_id in clubs:
+        tier = config.LEAGUE_TIERS.get(league_id)
+        if tier is None:
+            continue
+        cid_s = str(club_id)
+        if cid_s in clubs_with_explicit or cid_s in clubs_filled_via_thin:
+            continue
+        max_fee = overview_budget.get(club_id)
+        budget_source = "overview"
+        if max_fee is None or max_fee == 0:
+            max_fee = TIER_DEFAULT_MAX_FEE_UNMAPPED.get(tier, 5_000_000)
+            budget_source = "tier_default"
+        # Pick the two buckets with lowest headcount at this club.
+        per_bucket = sorted(
+            ((b, headcount_idx.get((club_id, b), 0)) for b in THIN_THRESHOLDS),
+            key=lambda x: (x[1], x[0]),
+        )
+        for bucket, hc in per_bucket[:2]:
+            to_insert.append((
+                club_id, club_name, league_id, bucket,
+                "Either", max_fee, None,
+                "Inferred", "AUTO_MIN",
+                hc, THIN_THRESHOLDS.get(bucket, 0), tier, snapshot,
+            ))
+            per_bucket_counts[bucket] += 1
+            budget_source_counts[budget_source] += 1
+        n_zero_filled += 1
+    if n_zero_filled:
+        print(f"[A.8.7 zero-presence floor] generated min-2-buckets for "
+              f"{n_zero_filled} clubs that had no explicit + no thin demand")
 
     init_inferred_table(con)
     con.executemany("""

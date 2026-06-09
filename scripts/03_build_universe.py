@@ -1,20 +1,27 @@
 """
-Step 03 — Build the filtered player universe from dcaribou's dataset.
+Step 03 — Build the (expanded) player universe from dcaribou's dataset.
 
-Applies the Day 2 filters and writes results to SQLite:
-  - Current club in one of our configured leagues (excluding `external` ones — those come
-    from the second-tier scraper run, merged in by a later step)
-  - Age 17-24 inclusive (as of SNAPSHOT_DATE)
-  - Current TM value within band
-  - Contract end ≤ SNAPSHOT_DATE + CONTRACT_MAX_YEARS_AHEAD
-  - ≥ MIN_MINUTES_SHARE of available minutes across all senior club competitions in
-    the last MINUTES_LOOKBACK_MONTHS — relaxed for leagues flagged `relaxed_minutes`
-    (Saudi/MLS, where dcaribou has no appearances)
-  - Current TM value ≥ last permanent fee (NULL fee passes — academy graduates)
+Phase A.8.7 (2026-06-06): brokerage filters stripped from universe build.
+The universe now ingests every active senior player at every covered club,
+not just the brokerage-cohort filtered subset. The brokerage filters
+(age 17-24, TM €8-45m, minutes ≥ 50%, contract cutoff) are reframed as
+the `brokerage_eligible` flag, set downstream in 09_compute_sellability.py.
 
-Computes three flag columns: right_priced, finished_product, contract_leveraged.
+Inclusion criteria (this script):
+  - Current club is in one of the 19 covered leagues (excluding `external` —
+    those come from the second-tier scraper)
+  - Active in the 25/26 season — at least one appearance in the last 12
+    months (lookback >= 2025-07-01). Filters out academy players, retired
+    players, and dead-club listings that dcaribou still carries
+  - Has a date_of_birth (required to compute age + the brokerage_eligible
+    flag downstream)
 
-Also seeds `club_pressure` with all clubs in the same league set; scores left NULL.
+Computes three flag columns: right_priced, finished_product,
+contract_leveraged. brokerage_eligible is set later by 09; it surfaces the
+original brokerage cohort as a flag on the expanded substrate.
+
+Also seeds `club_pressure` with all clubs in the same league set; scores
+left NULL.
 """
 
 from datetime import date
@@ -159,16 +166,26 @@ def main() -> None:
         FROM eligible
     """).fetchone()
     (in_leagues, after_age, after_value, after_contract, after_minutes, after_fee) = funnel
-    print("Filter funnel")
+    print("Diagnostic — what the OLD brokerage filters would have caught")
+    print("(Phase A.8.7: universe no longer filtered at build; these counts are informational only)")
     print(f"  In the league set:                                {in_leagues:>6,}")
-    print(f"  After age {config.AGE_MIN}-{config.AGE_MAX}:                                 {after_age:>6,}")
-    print(f"  After value €{config.TM_VALUE_MIN_EUR/1e6:.0f}m–€{config.TM_VALUE_MAX_EUR/1e6:.0f}m:                          {after_value:>6,}")
-    print(f"  After contract ends ≤ {contract_cutoff}:                  {after_contract:>6,}")
-    print(f"  After minutes ≥ {config.MIN_MINUTES_SHARE:.0%} (relaxed for SA1/MLS1):       {after_minutes:>6,}")
-    print(f"  After current value ≥ last fee:                   {after_fee:>6,}")
+    print(f"  → would-pass age {config.AGE_MIN}-{config.AGE_MAX}:                          {after_age:>6,}")
+    print(f"  → would-pass value €{config.TM_VALUE_MIN_EUR/1e6:.0f}m–€{config.TM_VALUE_MAX_EUR/1e6:.0f}m:                   {after_value:>6,}")
+    print(f"  → would-pass contract ≤ {contract_cutoff}:           {after_contract:>6,}")
+    print(f"  → would-pass minutes ≥ {config.MIN_MINUTES_SHARE:.0%}:                       {after_minutes:>6,}")
+    print(f"  → would-pass current value ≥ last fee:            {after_fee:>6,}")
+    print(f"  (after_fee ≈ projected brokerage_eligible count downstream)")
     print()
 
-    # 5. Pull the final universe with flag columns computed.
+    # 5. Pull the full senior universe with flag columns computed.
+    # Phase A.8.7: brokerage filters (age/value/minutes/contract/fee) stripped
+    # from the WHERE clause. Only structural-validity gates remain:
+    #   - club is in one of our 19 leagues
+    #   - player has DOB (required for downstream age/eligibility derivation)
+    #   - player has appearances in 25/26 season (active senior, not
+    #     academy / retired / dead-club listing)
+    # SA1 + MLS1 have no appearances data in dcaribou; relax the active-club
+    # gate for those (every player in those leagues passes).
     rows = src.execute(f"""
         SELECT
             p.player_id,
@@ -191,7 +208,6 @@ def main() -> None:
             p.foot,
             p.height_in_cm,
             p.country_of_citizenship,
-            -- Flag columns:
             CASE WHEN lf.last_fee_eur IS NULL OR p.market_value_in_eur >= lf.last_fee_eur
                  THEN 1 ELSE 0 END AS right_priced,
             CASE WHEN p.current_club_domestic_competition_id IN {relaxed_sql} THEN 0
@@ -205,17 +221,12 @@ def main() -> None:
         LEFT JOIN last_fee lf ON lf.player_id = p.player_id
         LEFT JOIN club_available ca ON ca.club_id = p.current_club_id
         WHERE p.current_club_domestic_competition_id IN {ids_sql}
-          AND CAST(EXTRACT(YEAR FROM AGE(DATE '{snapshot}', CAST(p.date_of_birth AS DATE))) AS INTEGER) BETWEEN {config.AGE_MIN} AND {config.AGE_MAX}
-          AND p.market_value_in_eur BETWEEN {config.TM_VALUE_MIN_EUR} AND {config.TM_VALUE_MAX_EUR}
-          AND p.contract_expiration_date IS NOT NULL
-          AND CAST(p.contract_expiration_date AS DATE) <= DATE '{contract_cutoff}'
+          AND p.date_of_birth IS NOT NULL
           AND (
               p.current_club_domestic_competition_id IN {relaxed_sql}
-              OR (ca.available_minutes IS NOT NULL AND ca.available_minutes > 0
-                  AND (COALESCE(pm.minutes_in_window, 0) * 1.0 / ca.available_minutes) >= {config.MIN_MINUTES_SHARE})
+              OR COALESCE(pm.apps_in_window, 0) >= 1
           )
-          AND (lf.last_fee_eur IS NULL OR p.market_value_in_eur >= lf.last_fee_eur)
-        ORDER BY p.current_club_domestic_competition_id, p.market_value_in_eur DESC
+        ORDER BY p.current_club_domestic_competition_id, p.market_value_in_eur DESC NULLS LAST
     """).fetchall()
 
     # 6. Clubs in our league set for the club_pressure stub.
@@ -240,7 +251,22 @@ def main() -> None:
             share = round(100 * minutes_in_window / available_minutes, 1) if available_minutes else None
             current_club_id_str = str(current_club_id) if current_club_id is not None else None
             dst.execute(
-                "INSERT INTO player_universe VALUES (" + ",".join(["?"] * 37) + ")",
+                # Explicit column list — Day 8/A.6/A.8.7 additions (is_imminent_free_agent,
+                # brokerage_eligible) have defaults via ALTER TABLE and aren't supplied here.
+                # INSERT OR REPLACE: when an expanded-universe dcaribou row collides with a
+                # previously-stored tm_squad_scrape row for the same player_id (e.g. PL
+                # squad players who also surface via the kader scrape), the dcaribou row
+                # wins — it carries minutes/finished_product, which the scrape doesn't.
+                "INSERT OR REPLACE INTO player_universe ("
+                "player_id, name, current_club, current_club_id, league, league_id, "
+                "primary_position, sub_position, age, date_of_birth, current_tm_value_eur, "
+                "contract_end_date, last_fee_paid_eur, last_fee_paid_date, minutes_last_18m, "
+                "appearances_last_18m, minutes_available_18m, minutes_share_pct, agency, foot, "
+                "height_cm, nationality, right_priced, finished_product, contract_leveraged, "
+                "position_bucket, sellability_score, parent_club, parent_club_id, on_loan, "
+                "data_source, snapshot_date, sellability_status, loan_end_date, scisports_player_id, "
+                "parent_club_recently_relegated, mandate_priority_multiplier"
+                ") VALUES (" + ",".join(["?"] * 37) + ")",
                 (
                     int(player_id),
                     name,

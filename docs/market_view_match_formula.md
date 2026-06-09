@@ -21,11 +21,14 @@ Market View is **comprehensive** — it scores every player in the mandate-relev
 The "available pool" used as the benchmark cohort for scarcity, valuation, and median calculations:
 
 ```
-cohort_member = (player.sellability_score > 50)
-              OR (player flagged "available" in market_movement_maps)
+cohort_member = (player.sellability_score > 50
+                 OR player.sellability_status = 'sellable_now')
+              AND NOT player.is_imminent_free_agent
 ```
 
-Scales naturally as the squad universe expands across the 10 demand-mapped leagues. The Brokerage Engine's strict `sellable_now` cohort (~124 players today) is **not** this cohort — Market View's pool is intentionally broader.
+Scales naturally as the squad universe expands across the 10 demand-mapped leagues. The Brokerage Engine's strict `sellable_now` cohort (~104 players today) is **not** this cohort — Market View's pool is intentionally broader.
+
+**Imminent Free Agent exclusion (2026-06-04):** any player whose registered contract ends within 180 days of `config.SNAPSHOT_DATE` carries `is_imminent_free_agent = 1` (set by `scripts/09_compute_sellability.py`) and is excluded from the cohort entirely. These are Bosman pre-contract candidates — not fee-bearing brokerage opportunities. Surfaced in Club View's "Imminent Free Agents" panel as possible player-side mandates.
 
 ---
 

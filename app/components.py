@@ -41,10 +41,27 @@ def fmt_pct(x: float | None, decimals: int = 1) -> str:
     return f"{float(x) * 100:.{decimals}f}%"
 
 
-def fmt_score(x: float | None, decimals: int = 1) -> str:
+def fmt_score(x: float | None, decimals: int = 1, cap: float | None = None) -> str:
+    """NULL-safe score formatter.
+
+    `cap` (optional) clamps the displayed value at the threshold; raw values
+    above the cap render as `"<cap>+"` so the user knows there's headroom
+    beyond. Sorting / methodology continue to use the raw value upstream —
+    this is purely a display transform.
+    """
     if x is None or pd.isna(x):
         return "—"
-    return f"{float(x):.{decimals}f}"
+    f = float(x)
+    if cap is not None and f > cap:
+        # No decimal noise on the cap; the "+" signals "raw exceeds cap".
+        return f"{int(cap)}+"
+    return f"{f:.{decimals}f}"
+
+
+def fmt_score_capped(x: float | None) -> str:
+    """Convenience wrapper — capped at 100, 1 decimal. Designed for direct use
+    as a pandas `.apply(...)` callable so call sites stay one-liners."""
+    return fmt_score(x, decimals=1, cap=100)
 
 
 def contract_years_remaining(ce: str | None, snapshot: date) -> float | None:
@@ -161,6 +178,177 @@ def build_buyer_rationale(row: pd.Series) -> str:
     return f"{_buyer_text(row)}. {trade[0].upper()}{trade[1:]}."
 
 
+# ─── Methodology cell + glossary ────────────────────────────────────────────
+# Renders the multiplicative chain that produced a match score, in full-word
+# form, so the reader can audit the arithmetic. Components are persisted on
+# the matches table by scripts/22_match_engine.py — see CREATE TABLE matches.
+
+def _fmt_mult(v) -> str:
+    """3-significant-figure formatter for multipliers (1.0, 0.85, 0.6, etc.)."""
+    if v is None or pd.isna(v):
+        return "—"
+    f = float(v)
+    if f == int(f):
+        return f"{int(f)}"
+    return f"{f:.2f}".rstrip("0").rstrip(".")
+
+
+def build_methodology(row: pd.Series, score_col: str = "market_match_score") -> str:
+    """Render the score arithmetic in full-word form, reconciling to the row's
+    active score within ±0.5 rounding tolerance.
+
+    Market View (`score_col='market_match_score'`) — full 9-component chain:
+        Sellability 93.5 × Age 1.00 × Demand 0.75 (Intel/NO) × Level fit 1.00
+          (ON_LEVEL) × Financial fit 0.44 (stretch fit) × Pathway 1.00
+          (2. Bundesliga → Premier League upward) × Scarcity 1.50
+          × Valuation 1.00 × Position tension 1.40 (RW ratio 3.20) = 64.8
+
+    Brokerage Engine (`score_col='match_score'`) — narrower 4-component chain
+    (the engine's formula doesn't include age / pathway / scarcity / valuation /
+    tension; level fit uses different multipliers 1.20/1.05/0.85):
+        Sellability 91.0 × Demand 1.00 (Agent/YES) × Financial fit 0.56
+          (above indicative) × Level fit 1.20 (ON_LEVEL) = 87.4
+
+    All components are persisted on the matches row by
+    `scripts/22_match_engine.py`. Each chain's product equals the row's score
+    in the active lens exactly (within rounding).
+    """
+    def _f(v, digits: int = 2) -> str:
+        if v is None or pd.isna(v):
+            return "—"
+        return f"{float(v):.{digits}f}"
+
+    sell        = row.get("sellability_score")
+    tier        = row.get("demand_tier_label") or "—"
+    fin         = row.get("financial_fit_mult")
+    fin_lbl     = row.get("financial_fit_label") or "—"
+    lvl_label   = row.get("level_fit") or "rating unknown"
+    gap_ca      = row.get("level_fit_gap_ca")
+    gap_pa      = row.get("level_fit_gap_pa")
+    final_score = row.get(score_col)
+    final_str   = _f(final_score, 1)
+    sell_str    = _f(sell, 1)
+
+    def _gap_str(v):
+        if v is None or pd.isna(v):
+            return "—"
+        return f"{float(v):+.1f}"
+
+    level_fit_suffix = f"({lvl_label}, gap_ca {_gap_str(gap_ca)}, gap_pa {_gap_str(gap_pa)})"
+
+    if score_col == "match_score":
+        # Brokerage formula: sell × demand_intensity × budget_fit × wage × level_fit_mult.
+        # demand_intensity (Agent=1.0, Intel=0.6, Inferred=0.4) is the Brokerage
+        # demand scale; demand_term_mult is Market View's parallel (0.75 for Intel).
+        demand_brok = row.get("demand_intensity")
+        lvl_m_brok = row.get("level_fit_multiplier")
+        parts = [
+            f"Sellability {sell_str}",
+            f"Demand {_f(demand_brok, 2)} ({tier})",
+            f"Financial fit {_f(fin, 2)} ({fin_lbl})",
+            f"Level fit {_f(lvl_m_brok, 2)} {level_fit_suffix}",
+        ]
+    else:
+        # Market View formula — all 9 components. Uses demand_term_mult.
+        demand_mkt = row.get("demand_term_mult")
+        age     = row.get("age_mult")
+        lvl_m_m = row.get("level_market_mult")
+        pathway = row.get("pathway_mult")
+        pw_lbl  = row.get("pathway_label") or "—"
+        scarce  = row.get("scarcity_mult")
+        valu    = row.get("valuation_mult")
+        tens    = row.get("tension_mult")
+        tens_r  = row.get("tension_ratio")
+        bucket  = row.get("position_bucket") or "—"
+        parts = [
+            f"Sellability {sell_str}",
+            f"Age {_f(age, 2)}",
+            f"Demand {_f(demand_mkt, 2)} ({tier})",
+            f"Level fit {_f(lvl_m_m, 2)} {level_fit_suffix}",
+            f"Financial fit {_f(fin, 2)} ({fin_lbl})",
+            f"Pathway {_f(pathway, 2)} ({pw_lbl})",
+            f"Scarcity {_f(scarce, 2)}",
+            f"Valuation {_f(valu, 2)}",
+            f"Position tension {_f(tens, 2)} ({bucket} ratio {_f(tens_r, 2)})",
+        ]
+
+    chain = " × ".join(parts)
+    return (
+        f'<span style="font-family:ui-monospace,Menlo,monospace; font-size:0.78rem; '
+        f'color:#374151; white-space:normal;">{chain} = <b>{final_str}</b></span>'
+    )
+
+
+_MATCH_GLOSSARY_BODY = """\
+Both **Brokerage** and **Market** scores are computed as a multiplicative chain.
+Each component contributes a value; the final score = product of all components.
+
+- **Sellability** — Player-level pressure to move (0–100, from
+  `09_compute_sellability.py`). Includes relegation pressure, contract leverage,
+  must-sell flag, finished product, right-priced.
+
+- **Age multiplier** — Dampens score for older players whose market is thinner.
+    - ≤25 → **1.0** (peak market value)
+    - 26–29 → **0.85** (still strong, more buyer-specific)
+    - 30–32 → **0.6** (limited market — wage / role-specific)
+    - 33+ → **0.35** (thin market — mostly free transfers)
+
+- **Demand term** — Strength of the buyer-side signal from market movement maps.
+    - Agent-validated → **1.0** (positional+level confirmed by agent intel)
+    - Intel-only → **0.75** (positional+level from intel signals)
+    - Inferred → **0.5** (squad-gap inference, no explicit signal)
+
+- **Level fit** — Dual-gap continuous curve anchored on the buyer's median
+  squad CA (`club_pressure.club_median_ca`). For every (player, buyer) pair:
+  `gap_ca = buyer_median_ca − player_ca`, `gap_pa = buyer_median_ca − player_pa`.
+    - `gap_pa > 10`  → **0.10** — peak below level (unrealistic)
+    - `gap_pa 5–10` → **0.30** — peak below level (stretch)
+    - `gap_pa 0–5`  → **0.55** — peak at level
+    - `gap_pa < 0, gap_ca > 12` → **1.20** — big upside
+    - `gap_pa < 0, gap_ca 5–12` → **1.15** — upside
+    - `gap_pa < 0, gap_ca -5 to 5` → **1.05** — on level, room to grow
+    - `gap_pa < 0, gap_ca < -5` → **1.00** — player above level (step down for the player)
+    - CA or PA NULL → **0.85** — rating unknown (neutral-pessimistic)
+  Same multiplier applies to both Brokerage and Market View.
+
+- **Pathway plausibility** — How realistic the league transition is.
+    - Upward in pyramid (e.g. C→S, Championship→PL) → **1.0**
+    - Lateral within Premier League → **0.95**
+    - Within same tier (e.g. A→A) → **0.85**
+    - Mild downward (one tier) → **0.6**
+    - Steep downward (two+ tiers) → **0.45**
+    - Into/out of off-pyramid leagues (MLS / Saudi) → **0.5 / 0.4**
+
+- **Scarcity** — Player's CA vs the cohort median for their position.
+  Range **0.5 – 1.5**. Above median = scarce quality (arbitrage signal).
+
+- **Valuation** — Player's predicted fee vs benchmark for comparable players.
+  Range **0.6 – 1.4**. Below benchmark = under-priced (arbitrage signal).
+
+- **Financial fit** — How the buyer's max budget compares to the player's
+  indicative transfer fee (`budget_fit × wage_feasibility`).
+    - `above indicative` (≈ 0.8 plateau) — buyer comfortably above the player's price.
+    - `at indicative` (≈ 0.5–0.7) — buyer roughly at the player's price.
+    - `stretch fit` (≈ 0.2–0.5) — buyer reach; deal needs a structure.
+    - `below threshold` (~ 0.0) — buyer below the €15m brokerage floor; gated out.
+
+- **Position tension** — Market-wide demand/supply ratio for the player's position.
+    - ratio > 1.3 → **1.4** (tight market — currently LW)
+    - ratio 0.7 – 1.3 → **1.0** (balanced — LB, RB)
+    - ratio < 0.7 → **0.7** (oversupplied — CB, GK, DM, CM, AM, ST_CF)
+  The active ratio for each row's bucket appears in the Methodology cell.
+
+Full spec: `docs/market_view_match_formula.md`
+"""
+
+
+def render_match_score_glossary() -> None:
+    """Drop a collapsed-by-default expander at the top of any matches-displaying
+    page. Lets the reader decode the Methodology cell without leaving the page."""
+    with st.expander("ⓘ How match scores work"):
+        st.markdown(_MATCH_GLOSSARY_BODY)
+
+
 def build_seller_context_line(profile: pd.Series, parent_pressure_score: float | None) -> str:
     """One-liner summarising the seller side of every match for a focused
     player — rendered once above the matches table on Player View."""
@@ -188,13 +376,33 @@ def build_seller_context_line(profile: pd.Series, parent_pressure_score: float |
 # 'BELOW', 'UNRATED' from scripts/22_match_engine.compute_level_fit.
 
 def level_fit_pill(level_fit: str | None) -> str:
-    """Returns inline HTML for the level-fit pill."""
-    if level_fit == "ON_LEVEL":
+    """Returns inline HTML for the level-fit pill.
+
+    Phase A.8.7 added dual-gap labels (`'upside'`, `'big upside'`,
+    `'on level, room to grow'`, `'peak below level — unrealistic'`, etc.).
+    Map them to the same three pill colours as the legacy ON_LEVEL / UPSIDE /
+    BELOW scheme.
+    """
+    if level_fit is None:
+        return '<span style="color:#9ca3af;">—</span>'
+
+    s = str(level_fit).strip().lower()
+    # Bucket each new label onto the existing green / amber / grey palette.
+    if s == "on_level" or s in ("on level, room to grow",):
         bg, fg, text = "#dcfce7", "#14532d", "✓ ON LEVEL"
-    elif level_fit == "UPSIDE":
+    elif s == "upside" or s in ("big upside",):
         bg, fg, text = "#fef3c7", "#78350f", "↗ UPSIDE"
-    elif level_fit == "BELOW":
+    elif s == "player above level — step down for the player":
+        bg, fg, text = "#e0e7ff", "#1e3a8a", "STEP DOWN"
+    elif s in ("peak at level",):
+        bg, fg, text = "#f3f4f6", "#374151", "PEAK AT LEVEL"
+    elif s == "below" or s in (
+        "peak below level — stretch",
+        "peak below level — unrealistic",
+    ):
         bg, fg, text = "#f3f4f6", "#374151", "BELOW"
+    elif s == "rating unknown":
+        return '<span style="color:#9ca3af; font-style:italic;">rating unknown</span>'
     else:
         return '<span style="color:#9ca3af;">—</span>'
     return (
@@ -364,14 +572,36 @@ def _auth_param() -> str:
     return f"_a={token}" if token else ""
 
 
+def _engine_param() -> str:
+    """Return 'engine=<key>' for appending to in-app URLs, or ''.
+
+    Session state is wiped on Streamlit's fresh WebSocket connection that
+    fires when the user clicks an in-app anchor (different URL → new run).
+    The active engine must ride in the URL alongside the auth token so
+    streamlit_app.py can rehydrate engine_selected on each request — without
+    this, click-throughs land the user back on the fork page.
+    """
+    engine = st.session_state.get("engine_selected")
+    if not engine:
+        engine = st.query_params.get("engine")
+    return f"engine={engine}" if engine else ""
+
+
 def with_auth(href: str) -> str:
-    """Append the auth token to an in-app href. Idempotent — already-tagged
-    URLs are returned unchanged."""
-    auth = _auth_param()
-    if not auth or "_a=" in href:
+    """Append auth token + engine to an in-app href. Idempotent."""
+    parts: list[str] = []
+    if "_a=" not in href:
+        auth = _auth_param()
+        if auth:
+            parts.append(auth)
+    if "engine=" not in href:
+        eng = _engine_param()
+        if eng:
+            parts.append(eng)
+    if not parts:
         return href
     sep = "&" if "?" in href else "?"
-    return f"{href}{sep}{auth}"
+    return f"{href}{sep}{'&'.join(parts)}"
 
 
 def player_url(player_id: int, name: str) -> str:
@@ -581,6 +811,129 @@ NAV_ITEMS = [
 ]
 
 
+# ─── Phase B engine chrome: sidebar banner + accent bar ──────────────────────
+
+def render_sidebar_engine_header() -> None:
+    """Coloured banner at the top of the sidebar branding the active engine.
+
+    Renders:
+      • Engine name in large text on a primary-coloured background
+      • Cohort count beneath, smaller weight
+      • "Switch engine ↻" button — clears engine_selected + URL param,
+        st.rerun() takes the user back to fork.py
+
+    Designed to be called BEFORE render_global_search() so it sits at the
+    very top of the sidebar on every page.
+    """
+    import db  # local import — components is imported by db at module load
+    palette = db.active_engine_colour()
+    label = db.active_engine_label()
+    if db.active_engine() == db.ENGINE_BROKERAGE:
+        cohort_n = db.cohort_size_brokerage()
+        cohort_sub = "sellable_now players"
+    else:
+        cohort_n = db.cohort_size_market_view()
+        cohort_sub = "mandate-relevant"
+
+    with st.sidebar:
+        st.markdown(
+            f'<div class="rvc-engine-banner" style="'
+            f'background:{palette["primary"]}; color:{palette["text_on_primary"]}; '
+            f'border-radius:8px; padding:14px 16px; margin:-6px 0 10px 0; '
+            f'box-shadow:0 1px 0 rgba(0,0,0,0.04);">'
+            f'  <div style="font-size:1.05rem; font-weight:800; letter-spacing:0.01em;">'
+            f'    {label}'
+            f'  </div>'
+            f'  <div style="font-size:0.83rem; font-weight:500; margin-top:2px; '
+            f'              opacity:0.92;">'
+            f'    {cohort_n:,} {cohort_sub}'
+            f'  </div>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+        # Switch-engine pill — muted outline button styled to the engine colour.
+        st.markdown(
+            f'<style>'
+            f'div[data-testid="stSidebar"] .rvc-switch-engine button {{'
+            f'  background: transparent !important;'
+            f'  color: {palette["primary"]} !important;'
+            f'  border: 1px solid {palette["primary"]} !important;'
+            f'  font-weight: 600;'
+            f'  font-size: 0.82rem;'
+            f'  padding: 4px 10px;'
+            f'}}'
+            f'div[data-testid="stSidebar"] .rvc-switch-engine button:hover {{'
+            f'  background: {palette["primary"]} !important;'
+            f'  color: {palette["text_on_primary"]} !important;'
+            f'}}'
+            f'</style>',
+            unsafe_allow_html=True,
+        )
+        st.markdown('<div class="rvc-switch-engine">', unsafe_allow_html=True)
+        if st.button("Switch engine ↻", key="rvc_switch_engine",
+                     help="Return to the engine chooser",
+                     use_container_width=True):
+            # Clear both session state and URL param so streamlit_app.py
+            # falls back to fork.render() on rerun.
+            st.session_state.pop("engine_selected", None)
+            st.query_params.pop("engine", None)
+            st.rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
+
+
+def render_page_accent() -> None:
+    """Thin 4px coloured bar at the very top of the main content area.
+
+    Engine-coloured so the user sees the active engine even before the page
+    title renders. Call FIRST in every page (Brokerage, Market View, shared).
+    """
+    import db
+    palette = db.active_engine_colour()
+    st.markdown(
+        f'<div style="height:4px; background:{palette["primary"]}; '
+        f'margin:-1rem -1rem 12px -1rem;"></div>',
+        unsafe_allow_html=True,
+    )
+
+
+# ─── Sidebar: View-mode toggle (Market View / Brokerage Engine) ─────────────
+
+def render_view_toggle() -> str:
+    """Persistent sidebar toggle between Market View and Brokerage Engine.
+
+    Default Market View — the comprehensive lens — per the dual-score
+    architecture (see CLAUDE.md "Dual-score architecture"). State persists
+    via st.session_state["view_mode"] across page navigations.
+
+    Returns the active mode label so callers can pass it to db helpers if
+    needed; most pages just import db.active_match_score_col() directly.
+    """
+    with st.sidebar:
+        st.markdown("---")
+        current = st.session_state.get("view_mode", "Market View")
+        mode = st.radio(
+            "View mode",
+            options=["Market View", "Brokerage Engine"],
+            index=0 if current == "Market View" else 1,
+            key="view_mode",
+            help=(
+                "Market View: comprehensive — every (player × buyer) match in "
+                "the 3,818-player mandate cohort, ranked by market_match_score.\n\n"
+                "Brokerage Engine: targeted — only the sellable_now slice "
+                "(~120 players), ranked by match_score."
+            ),
+        )
+        # Tight badge so the visual difference is obvious at a glance
+        col = "#1F3864" if mode == "Market View" else "#A85432"
+        st.markdown(
+            f'<div style="margin-top:-8px; font-size:0.78rem; color:{col};">'
+            f'<b>Active:</b> {mode}'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+    return mode
+
+
 # ─── Global "jump to" search dropdown (sidebar; every page) ─────────────────
 
 def render_global_search(players: list[dict], clubs: list[dict]) -> None:
@@ -671,6 +1024,85 @@ def green_gradient(v: float | None, vmin: float, vmax: float) -> str:
     g = int(g1 + (g2 - g1) * pct)
     b = int(b1 + (b2 - b1) * pct)
     text = "color: white;" if pct > 0.6 else ""
+    return f"background-color: rgb({r},{g},{b}); {text}"
+
+
+# Unidirectional white→green gradient with a non-linear stop curve.
+# Shape (2026-06-05 v3): mid-range scores stay near-white so only genuinely
+# good matches read as "green". Bottom 20-40 band reads as essentially white;
+# 40-70 builds slowly into a recognisable green; 70-100 is the steep climb
+# into dark brand green. Values above 100 clamp to the anchor.
+#
+# Linear interpolation BETWEEN adjacent stops (not across the whole range),
+# so the visual curve respects each band's intended weight.
+_HEATMAP_WG_STOPS: list[tuple[float, tuple[int, int, int]]] = [
+    ( 20.0, (255, 255, 255)),  # #ffffff pure white
+    ( 25.0, (247, 253, 249)),  # #f7fdf9 barely tinted
+    ( 40.0, (232, 247, 237)),  # #e8f7ed very pale mint
+    ( 55.0, (200, 233, 210)),  # #c8e9d2 pale green
+    ( 70.0, (142, 208, 163)),  # #8ed0a3 medium green
+    ( 85.0, ( 78, 182, 115)),  # #4eb673 clear green
+    (100.0, ( 22, 163,  74)),  # #16a34a dark brand green
+]
+
+
+def heatmap_gradient(v, vmin: float = 0.0, vmax: float = 100.0) -> str:
+    """Unidirectional white→green background-colour rule for a Styler cell.
+
+    Piecewise linear interpolation between adjacent stops in `_HEATMAP_WG_STOPS`.
+    Values at or below 20 clamp to white; values at or above 100 clamp to the
+    dark-green anchor. `vmin`/`vmax` kept in the signature for backwards
+    compatibility but ignored — the stop table is on the 0–100 score scale.
+
+    Cap-aware (2026-06-08 fix): also accepts string inputs that look like
+    `fmt_score_capped` output ("100+", "92.3", "—"). "100+" → dark green
+    anchor; em-dash / blank → no styling. Lets Styler `.map(...)` calls work
+    on columns that have already been formatted for display.
+
+    NaN/None returns an empty string so the cell stays unstyled.
+    """
+    if v is None:
+        return ""
+    # String inputs from fmt_score_capped: "100+", "92.3", "—", "".
+    if isinstance(v, str):
+        s = v.strip()
+        if not s or s == "—":
+            return ""
+        if s.endswith("+"):
+            # Capped sentinel — clamp to the dark-green anchor.
+            f = float(s[:-1])
+            f = max(f, _HEATMAP_WG_STOPS[-1][0])  # ≥ 100 → top stop
+        else:
+            try:
+                f = float(s)
+            except ValueError:
+                return ""
+        if pd.isna(f):
+            return ""
+    else:
+        if pd.isna(v):
+            return ""
+        f = float(v)
+    # Below-floor + above-ceiling clamps
+    if f <= _HEATMAP_WG_STOPS[0][0]:
+        r, g, b = _HEATMAP_WG_STOPS[0][1]
+    elif f >= _HEATMAP_WG_STOPS[-1][0]:
+        r, g, b = _HEATMAP_WG_STOPS[-1][1]
+    else:
+        # Find bracketing stops and interpolate within them only.
+        for i in range(len(_HEATMAP_WG_STOPS) - 1):
+            lo_v, (lo_r, lo_g, lo_b) = _HEATMAP_WG_STOPS[i]
+            hi_v, (hi_r, hi_g, hi_b) = _HEATMAP_WG_STOPS[i + 1]
+            if lo_v <= f <= hi_v:
+                t = (f - lo_v) / (hi_v - lo_v) if hi_v > lo_v else 0.0
+                r = int(lo_r + (hi_r - lo_r) * t)
+                g = int(lo_g + (hi_g - lo_g) * t)
+                b = int(lo_b + (hi_b - lo_b) * t)
+                break
+        else:
+            r, g, b = _HEATMAP_WG_STOPS[-1][1]
+    luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255
+    text = "color: white;" if luminance < 0.50 else "color: #111827;"
     return f"background-color: rgb({r},{g},{b}); {text}"
 
 

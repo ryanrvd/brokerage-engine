@@ -149,6 +149,20 @@ def tm_to_fee_multiplier(tm_eur: int | float) -> float:
 # full indicative fee but ≥€15m signals real intent to spend on a single signing.
 MIN_BROKERAGE_FEE = 15_000_000
 
+# Score floor for surfaces (Targets, All Matches, Player View, Club View, etc.).
+# Engine-active score column must be ≥ this for a row to render. Below-floor
+# rows stay in the matches table for revisitability — they're noise on default
+# views but the data is preserved. Added 2026-06-05 (Phase A.8.7).
+MIN_MATCH_SCORE_DISPLAY = 25.0
+
+# Mandate-cohort sellability gate — sellability_score >= this OR sellable_now
+# (and NOT imminent_fa) defines the Market View cohort. Dropped 50 → 35 in
+# Phase A.8.7 after the matched_now slice was too narrow to surface eg.
+# Sunderland's promoted squad even when level_fit multiplier killed wide-gap
+# noise downstream.
+MANDATE_COHORT_SELLABILITY_FLOOR = 35.0
+
+
 # League-tier hierarchy used by the matcher's "lateral or upward only" rule.
 # Lower tier number = higher tier. Tier-D self-contained (SA1/MLS1 moves only
 # permitted out of D if the player is already in D).

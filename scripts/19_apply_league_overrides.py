@@ -164,13 +164,18 @@ def apply_recent_movement_flags(
     cascade parent_club_recently_relegated + mandate_priority_multiplier
     onto player_universe via parent_club_id.
 
-    mandate_priority_multiplier:
+    mandate_priority_multiplier (sell-side):
       1.3 — recently relegated (Wolves, Burnley, West Ham). Elevated mandate
-            priority: more valuable squad than typical relegated cohort,
-            structural sell pressure.
-      1.1 — recently promoted (Coventry, Ipswich, Hull). Strengthening; more
-            selective on outbound.
-      1.0 — everyone else (default DEFAULT 1.0 in schema).
+            priority: structural sell pressure, more valuable squad than the
+            typical relegated cohort.
+      1.0 — everyone else, INCLUDING recently-promoted clubs.
+
+    Note (2026-06-04): promoted clubs (Coventry/Ipswich/Hull + the 10
+    European newly-promoted) used to carry 1.1 here, but they are strategic
+    BUYERS, not mandate sellers — boosting their squad's sell-side priority
+    is wrong. Promoted clubs surface on the buyer side via Mandate
+    Territory's "promoted-buyer panel" instead. See CLAUDE.md §Mandate
+    priority.
     """
     if not _table_exists(con, "club_pressure"):
         return {}
@@ -199,7 +204,9 @@ def apply_recent_movement_flags(
             counts["club_pressure_pro"] += cur.rowcount
 
         if _table_exists(con, "player_universe"):
-            multiplier = 1.3 if rel else 1.1
+            # Relegated → 1.3 sell-side boost. Promoted → 1.0 (no sell-side boost;
+            # they surface on the buyer side via Mandate Territory).
+            multiplier = 1.3 if rel else 1.0
             cur2 = con.execute(
                 "UPDATE player_universe SET parent_club_recently_relegated = ?, "
                 "mandate_priority_multiplier = ? WHERE parent_club_id = ?",

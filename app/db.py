@@ -60,12 +60,20 @@ def get_excluded_ids() -> set[int]:
 
 @st.cache_data(ttl=CACHE_TTL)
 def get_player_search_options() -> list[dict]:
-    """All sellable players with both display and official names — used by the
-    sidebar global-search dropdown to find by either form."""
+    """Players in the global-search dropdown. Includes sellable_now (Brokerage
+    substrate) plus the wider mandate-relevant cohort (Market View) so search
+    works in both engines. Phase A.8.7: brokerage_eligible gates Brokerage rows."""
     rows = _read_sql("""
         SELECT pu.player_id, pu.name AS official_name, pu.current_club, pu.league_id
         FROM player_universe pu
-        WHERE pu.sellability_status = 'sellable_now'
+        WHERE COALESCE(pu.is_imminent_free_agent, 0) = 0
+          AND (
+            (pu.sellability_status = 'sellable_now' AND pu.brokerage_eligible = 1)
+            OR (pu.sellability_score >= 35
+                AND EXISTS (SELECT 1 FROM player_ratings pr2
+                            WHERE pr2.tm_player_id = pu.player_id
+                              AND pr2.current_ability IS NOT NULL))
+          )
     """)
     import player_display as _pd
     pmap = _pd.load_display_map()
@@ -219,12 +227,135 @@ def _attach_display_columns(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+# ─── Engine selection (fork-at-login architecture) ───────────────────────────
+
+ENGINE_BROKERAGE = "brokerage"
+ENGINE_MARKET    = "market_view"
+
+ENGINE_LABEL = {
+    ENGINE_BROKERAGE: "Brokerage Engine",
+    ENGINE_MARKET:    "Market View",
+}
+
+
+def active_engine() -> str | None:
+    """Return the engine key in session state, or None if user hasn't picked."""
+    return st.session_state.get("engine_selected")
+
+
+def active_engine_label() -> str:
+    """Human label for the active engine. Defaults to Market View if unset."""
+    return ENGINE_LABEL.get(active_engine() or ENGINE_MARKET, "Market View")
+
+
+# Engine-chrome colours — Phase B (2026-06-08). Source of truth for every
+# branded surface (sidebar header banner, page accent bar, active-nav highlight).
+# Hexes mirror the two card borders/CTAs on `app/fork.py`.
+_BROKERAGE_PRIMARY = "#b91c1c"  # brick-red — fork.py BROKERAGE_RED
+_BROKERAGE_DARK    = "#7f1d1d"  # 700 — for hover / depressed states
+_MARKET_PRIMARY    = "#1d4ed8"  # brand-blue — fork.py MARKET_BLUE
+_MARKET_DARK       = "#1e3a8a"  # 800 — for hover / depressed states
+
+
+def active_engine_colour() -> dict:
+    """Return the colour palette for the active engine.
+
+    Keys:
+      primary         — the canonical engine colour (banner bg, accent bar,
+                        active-nav underline)
+      primary_dark    — darker variant for hover / pressed states
+      text_on_primary — text colour over a primary-coloured background
+    """
+    if active_engine() == ENGINE_BROKERAGE:
+        return {"primary": _BROKERAGE_PRIMARY,
+                "primary_dark": _BROKERAGE_DARK,
+                "text_on_primary": "#ffffff"}
+    return {"primary": _MARKET_PRIMARY,
+            "primary_dark": _MARKET_DARK,
+            "text_on_primary": "#ffffff"}
+
+
+def active_match_score_col() -> str:
+    """Return the match-score column name to sort/rank by for the active engine.
+
+    Brokerage Engine → `match_score`        (sellable_now cohort)
+    Market View      → `market_match_score` (mandate-relevant cohort)
+    """
+    return "match_score" if active_engine() == ENGINE_BROKERAGE else "market_match_score"
+
+
+def active_cohort_filter() -> str:
+    """SQL WHERE-fragment for the active engine's player-cohort filter.
+
+    Brokerage Engine → strict sellable_now cohort.
+    Market View      → wider mandate-relevant cohort: sellable_now ∪
+                       (sellability_score ≥ MANDATE_COHORT_SELLABILITY_FLOOR
+                        AND player has CA),
+                       AND NOT imminent_fa.
+    Floor lowered 50 → 35 in Phase A.8.7.
+    """
+    if active_engine() == ENGINE_BROKERAGE:
+        return ("pu.sellability_status = 'sellable_now' "
+                "AND pu.brokerage_eligible = 1 "
+                "AND COALESCE(pu.is_imminent_free_agent, 0) = 0")
+    return (
+        "COALESCE(pu.is_imminent_free_agent, 0) = 0 "
+        "AND (pu.sellability_status = 'sellable_now' "
+        "     OR (pu.sellability_score >= 35 "
+        "         AND EXISTS (SELECT 1 FROM player_ratings pr2 "
+        "                     WHERE pr2.tm_player_id = pu.player_id "
+        "                       AND pr2.current_ability IS NOT NULL)))"
+    )
+
+
+@st.cache_data(ttl=CACHE_TTL)
+def cohort_size_brokerage() -> int:
+    """Live count: strict sellable_now + brokerage_eligible cohort.
+    Phase A.8.7: universe expanded; Brokerage substrate now enforced via flag."""
+    df = _read_sql("""
+        SELECT COUNT(*) AS n FROM player_universe pu
+        WHERE pu.sellability_status = 'sellable_now'
+          AND pu.brokerage_eligible = 1
+          AND COALESCE(pu.is_imminent_free_agent, 0) = 0
+    """)
+    return int(df["n"].iloc[0]) if not df.empty else 0
+
+
+@st.cache_data(ttl=CACHE_TTL)
+def cohort_size_market_view() -> int:
+    """Live count: mandate-relevant cohort = sellable_now ∪ (sellability ≥ 35
+    AND has CA), excluding IFAs. Floor lowered 50 → 35 in Phase A.8.7."""
+    df = _read_sql("""
+        SELECT COUNT(*) AS n FROM player_universe pu
+        WHERE COALESCE(pu.is_imminent_free_agent, 0) = 0
+          AND (
+            pu.sellability_status = 'sellable_now'
+            OR (pu.sellability_score >= 35
+                AND EXISTS (SELECT 1 FROM player_ratings pr2
+                             WHERE pr2.tm_player_id = pu.player_id
+                               AND pr2.current_ability IS NOT NULL))
+          )
+    """)
+    return int(df["n"].iloc[0]) if not df.empty else 0
+
+
+# ─── Backwards-compat aliases — keep until all call sites migrate ────────────
+# Used by pages that still reference the old toggle terminology.
+VIEW_MARKET = "Market View"
+VIEW_BROKERAGE = "Brokerage Engine"
+
+
+def active_view_label() -> str:
+    return active_engine_label()
+
+
 _MATCHES_SQL = """
     SELECT
         m.match_id,
         m.player_id,
         m.buyer_club_id,
         m.match_score,
+        m.market_match_score,
         m.player_name,
         pu.age,
         m.position_bucket,
@@ -257,6 +388,21 @@ _MATCHES_SQL = """
         m.club_threshold_for_request,
         m.level_fit,
         m.level_fit_multiplier,
+        m.age_mult,
+        m.demand_term_mult,
+        m.demand_tier_label,
+        m.level_market_mult,
+        m.pathway_mult,
+        m.pathway_label,
+        m.scarcity_mult,
+        m.valuation_mult,
+        m.tension_mult,
+        m.tension_ratio,
+        m.financial_fit_mult,
+        m.financial_fit_label,
+        m.level_fit_gap_ca,
+        m.level_fit_gap_pa,
+        cp.club_median_ca AS parent_club_median_ca,
         cp.total_pressure_score AS parent_pressure_score,
         pu.contract_leveraged,
         pu.right_priced,
@@ -273,19 +419,28 @@ _MATCHES_SQL = """
 
 
 @st.cache_data(ttl=CACHE_TTL)
-def get_all_matches() -> pd.DataFrame:
-    """Every row in the matches table — no exclusions applied. Used by Sheet 1 mirror /
-    All Matches page (Day 7). Includes *_display columns from Club Display Names."""
-    df = _read_sql(_MATCHES_SQL + " ORDER BY m.match_score DESC, m.player_name")
+def get_all_matches(sort_col: str = "match_score") -> pd.DataFrame:
+    """Every row in the matches table — no exclusions applied.
+
+    `sort_col` is the column to ORDER BY (DESC NULLS LAST) — pass either
+    "match_score" (Brokerage Engine, default) or "market_match_score"
+    (Market View). Callers typically pass `active_match_score_col()`.
+    """
+    df = _read_sql(
+        _MATCHES_SQL + f" ORDER BY m.{sort_col} DESC NULLS LAST, m.player_name"
+    )
     return _attach_display_columns(df)
 
 
 @st.cache_data(ttl=CACHE_TTL)
-def get_targets() -> pd.DataFrame:
-    """Targets view = all matches MINUS players Ryan flagged exclude=1 in
-    data/player_overrides.xlsx. This is the headline view on the Home page."""
+def get_targets(sort_col: str = "match_score") -> pd.DataFrame:
+    """Targets view = all matches MINUS players Ryan flagged exclude=1.
+
+    Sort column toggles between match_score (Brokerage) and
+    market_match_score (Market View) — see `active_match_score_col()`.
+    """
     excluded = get_excluded_ids()
-    df = get_all_matches()
+    df = get_all_matches(sort_col=sort_col)
     if not excluded:
         return df
     return df[~df["player_id"].isin(excluded)].reset_index(drop=True)
@@ -294,14 +449,8 @@ def get_targets() -> pd.DataFrame:
 # ─── Per-entity queries ───────────────────────────────────────────────────────
 
 @st.cache_data(ttl=CACHE_TTL)
-def get_player(player_id: int) -> dict:
-    """Full player profile + all their matches.
-
-    Returns a dict:
-      { 'profile':  Series (single row from player_universe + parent pressure),
-        'matches':  DataFrame (this player's matches, sorted by score DESC),
-        'excluded': bool (whether the player is in the overrides exclude list) }
-    """
+def get_player(player_id: int, sort_col: str = "match_score") -> dict:
+    """Full player profile + all their matches, ranked by `sort_col`."""
     profile_df = _read_sql("""
         SELECT pu.*, cp.total_pressure_score, cp.league_id AS parent_league_id,
                cp.manager_change_flag, cp.public_must_sell_flag,
@@ -315,8 +464,10 @@ def get_player(player_id: int) -> dict:
         LEFT JOIN player_ratings pr ON pr.tm_player_id = pu.player_id
         WHERE pu.player_id = ?
     """, (player_id,))
-    matches_df = _read_sql(_MATCHES_SQL + " WHERE m.player_id = ? ORDER BY m.match_score DESC",
-                            (player_id,))
+    matches_df = _read_sql(
+        _MATCHES_SQL + f" WHERE m.player_id = ? ORDER BY m.{sort_col} DESC NULLS LAST",
+        (player_id,),
+    )
     return {
         "profile":  profile_df.iloc[0] if len(profile_df) else None,
         "matches":  matches_df,
@@ -325,7 +476,7 @@ def get_player(player_id: int) -> dict:
 
 
 @st.cache_data(ttl=CACHE_TTL)
-def get_club(club_id: int) -> dict:
+def get_club(club_id: int, sort_col: str = "match_score") -> dict:
     """Club profile (pressure components, overview), sellable assets parented there,
     and the club's buyer requests if mapped.
 
@@ -353,8 +504,10 @@ def get_club(club_id: int) -> dict:
                preferred_side, max_transfer_fee_eur, max_wage_pw_eur, source, validated
         FROM inferred_club_requests WHERE club_id = ?
     """, (club_id, club_id))
-    buyer_matches_df = _read_sql(_MATCHES_SQL + " WHERE m.buyer_club_id = ? ORDER BY m.match_score DESC",
-                                  (club_id,))
+    buyer_matches_df = _read_sql(
+        _MATCHES_SQL + f" WHERE m.buyer_club_id = ? ORDER BY m.{sort_col} DESC NULLS LAST",
+        (club_id,),
+    )
     return {
         "pressure":         pressure_df.iloc[0] if len(pressure_df) else None,
         "overview":         overview_df.iloc[0] if len(overview_df) else None,
@@ -365,15 +518,37 @@ def get_club(club_id: int) -> dict:
 
 
 @st.cache_data(ttl=CACHE_TTL)
-def get_position(bucket: str) -> dict:
-    """Position-bucket view: every sellable player at this bucket + every buyer request."""
-    players_df = _read_sql("""
+def get_position(bucket: str, sort_col: str = "match_score",
+                  engine_key: str | None = None) -> dict:
+    """Position-bucket view: every cohort-active player at this bucket + every buyer request.
+
+    `engine_key` (2026-06-09) drives the cohort filter:
+      • "brokerage" → sellable_now ∩ brokerage_eligible (~5–20 per bucket)
+      • "market_view" / None → wider mandate cohort (sellability ≥ 35 + has CA,
+                                NOT IFA — matches `scripts/22_match_engine.py`)
+    Passed as a parameter (rather than read from session state inside) so the
+    `@st.cache_data` cache keys correctly disambiguate the two engines.
+    """
+    if engine_key == ENGINE_BROKERAGE:
+        cohort_sql = ("pu.sellability_status = 'sellable_now' "
+                      "AND pu.brokerage_eligible = 1 "
+                      "AND COALESCE(pu.is_imminent_free_agent, 0) = 0")
+    else:
+        cohort_sql = (
+            "COALESCE(pu.is_imminent_free_agent, 0) = 0 "
+            "AND (pu.sellability_status = 'sellable_now' "
+            "     OR (pu.sellability_score >= 35 "
+            "         AND EXISTS (SELECT 1 FROM player_ratings pr2 "
+            "                     WHERE pr2.tm_player_id = pu.player_id "
+            "                       AND pr2.current_ability IS NOT NULL)))"
+        )
+    players_df = _read_sql(f"""
         SELECT pu.*, cp.total_pressure_score AS parent_pressure_score,
                COALESCE((SELECT MAX(match_score) FROM matches WHERE player_id=pu.player_id), 0) best_match
         FROM player_universe pu
         LEFT JOIN club_pressure cp ON cp.club_id = pu.parent_club_id
         WHERE pu.position_bucket = ?
-          AND pu.sellability_status = 'sellable_now'
+          AND {cohort_sql}
         ORDER BY pu.sellability_score DESC
     """, (bucket,))
     requests_df = _read_sql("""
@@ -386,8 +561,10 @@ def get_position(bucket: str) -> dict:
         FROM inferred_club_requests WHERE position_bucket = ?
         ORDER BY max_transfer_fee_eur DESC
     """, (bucket, bucket))
-    matches_df = _read_sql(_MATCHES_SQL + " WHERE m.position_bucket = ? ORDER BY m.match_score DESC",
-                            (bucket,))
+    matches_df = _read_sql(
+        _MATCHES_SQL + f" WHERE m.position_bucket = ? ORDER BY m.{sort_col} DESC NULLS LAST",
+        (bucket,),
+    )
     return {
         "players":  players_df,
         "requests": requests_df,
@@ -396,15 +573,36 @@ def get_position(bucket: str) -> dict:
 
 
 @st.cache_data(ttl=CACHE_TTL)
-def get_league(league_code: str) -> dict:
-    """League view: sellers in this league + buyers in this league + matches involving it."""
-    sellers_df = _read_sql("""
+def get_league(league_code: str, sort_col: str = "match_score",
+                engine_key: str | None = None) -> dict:
+    """League view: sellers in this league + buyers in this league + matches involving it.
+
+    `engine_key` (2026-06-09): drives the cohort filter for the sellers slice:
+      • "brokerage"  → sellable_now ∩ brokerage_eligible (small per-league count)
+      • "market_view" → wider Market View cohort (sellability ≥ 35 ∩ has CA ∩ NOT IFA)
+    Matches the same engine-aware pattern in `get_position` and the page-level
+    cohort filter helpers. Passed as a parameter so `@st.cache_data` keys
+    don't share state between engines.
+    """
+    if engine_key == ENGINE_BROKERAGE:
+        cohort_sql = ("pu.sellability_status = 'sellable_now' "
+                      "AND pu.brokerage_eligible = 1 "
+                      "AND COALESCE(pu.is_imminent_free_agent, 0) = 0")
+    else:
+        cohort_sql = (
+            "COALESCE(pu.is_imminent_free_agent, 0) = 0 "
+            "AND EXISTS (SELECT 1 FROM player_ratings pr2 "
+            "            WHERE pr2.tm_player_id = pu.player_id "
+            "              AND pr2.current_ability IS NOT NULL) "
+            "AND (pu.sellability_score >= 35 OR pu.sellability_status = 'sellable_now')"
+        )
+    sellers_df = _read_sql(f"""
         SELECT pu.*, cp.total_pressure_score,
                COALESCE((SELECT MAX(match_score) FROM matches WHERE player_id=pu.player_id), 0) best_match
         FROM player_universe pu
         LEFT JOIN club_pressure cp ON cp.club_id = pu.parent_club_id
         WHERE cp.league_id = ?
-          AND pu.sellability_status = 'sellable_now'
+          AND {cohort_sql}
         ORDER BY pu.sellability_score DESC
     """, (league_code,))
     requests_df = _read_sql("""
@@ -417,10 +615,13 @@ def get_league(league_code: str) -> dict:
         FROM inferred_club_requests WHERE league = ?
         ORDER BY max_transfer_fee_eur DESC
     """, (league_code, league_code))
-    matches_df = _read_sql(_MATCHES_SQL + """
+    matches_df = _read_sql(
+        _MATCHES_SQL + f"""
         WHERE m.buyer_league_id = ? OR pu.league_id = ?
-        ORDER BY m.match_score DESC
-    """, (league_code, league_code))
+        ORDER BY m.{sort_col} DESC NULLS LAST
+    """,
+        (league_code, league_code),
+    )
     return {
         "sellers":  sellers_df,
         "requests": requests_df,

@@ -107,6 +107,23 @@ ALTER TABLE player_universe ADD COLUMN parent_club_recently_relegated INTEGER;
 ALTER TABLE player_universe ADD COLUMN mandate_priority_multiplier   REAL DEFAULT 1.0;
 ALTER TABLE club_pressure   ADD COLUMN recently_relegated INTEGER DEFAULT 0;
 ALTER TABLE club_pressure   ADD COLUMN recently_promoted  INTEGER DEFAULT 0;
+
+-- 2026-06-04: Imminent Free Agent flag (Bosman pre-contract window).
+-- Set in scripts/09_compute_sellability.py: 1 when contract end is within
+-- 180 days of the snapshot. IFAs have sellability_score forced to 0 and
+-- are excluded from the matches table by scripts/22_match_engine.py —
+-- they're surfaced separately in Club View's "Imminent Free Agents" panel.
+ALTER TABLE player_universe ADD COLUMN is_imminent_free_agent INTEGER DEFAULT 0;
+
+-- 2026-06-06 (Phase A.8.7 universe expansion): brokerage_eligible flag.
+-- The player universe now ingests every senior player at every covered club
+-- (no age/value/minutes/contract gate at build time). The brokerage cohort
+-- substrate is preserved as a downstream flag: 1 when the player still
+-- meets the original brokerage filters (config.AGE_MIN/MAX, TM_VALUE_MIN/MAX,
+-- MIN_MINUTES_SHARE, end_of_season_plus(CONTRACT_MAX_YEARS_AHEAD)). Set by
+-- scripts/09_compute_sellability.py. All Brokerage Engine surfaces filter to
+-- brokerage_eligible = 1; Market View grades the entire expanded universe.
+ALTER TABLE player_universe ADD COLUMN brokerage_eligible INTEGER DEFAULT 0;
 """
 
 

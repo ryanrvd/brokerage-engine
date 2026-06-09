@@ -137,17 +137,22 @@ def _build_tm_index(con: sqlite3.Connection, league_code: str | None = None) -> 
     candidate pool to a single league causes those edge cases to go unmatched.
 
     DOB tie-breaking inside link_and_write distinguishes same-name collisions.
+
+    Each indexed entry carries `position_bucket` so link_and_write can refuse
+    Pass 2 token-subset candidates whose SciSports position1 disagrees with
+    the TM bucket (e.g. TM ST_CF being matched to a SciSports DM was the
+    Kalajdzic→Lukić bug class).
     """
     if league_code is None:
         rows = con.execute("""
             SELECT pu.player_id, pu.name, pu.date_of_birth, pu.parent_club,
-                   pu.parent_club_id, pu.league_id
+                   pu.parent_club_id, pu.league_id, pu.position_bucket
             FROM player_universe pu
         """).fetchall()
     else:
         rows = con.execute("""
             SELECT pu.player_id, pu.name, pu.date_of_birth, pu.parent_club,
-                   pu.parent_club_id, pu.league_id
+                   pu.parent_club_id, pu.league_id, pu.position_bucket
             FROM player_universe pu
             WHERE pu.league_id = ?
                OR pu.parent_club_id IN (
@@ -156,7 +161,7 @@ def _build_tm_index(con: sqlite3.Connection, league_code: str | None = None) -> 
         """, (league_code, league_code)).fetchall()
 
     index: dict[str, list[dict]] = {}
-    for pid, name, dob, parent, pcid, lg in rows:
+    for pid, name, dob, parent, pcid, lg, bucket in rows:
         norm = _normalize(name)
         if not norm:
             continue
@@ -166,6 +171,7 @@ def _build_tm_index(con: sqlite3.Connection, league_code: str | None = None) -> 
             "dob": dob,
             "parent_club": parent,
             "league_id": lg,
+            "position_bucket": bucket,
         })
     return index
 
@@ -185,12 +191,29 @@ def link_and_write(
     sci_id_updates: list[tuple[int, int]] = []     # (sci_id, tm_pid)
     rating_upserts: list[tuple[int, float | None, float | None, str]] = []
 
+    # SciSports position1 → project 10-bucket family. Used for the Pass 2
+    # bucket-mismatch guard added 2026-06-04 after the Kalajdzic→Lukić bug.
+    SCI_POS_TO_BUCKET = {
+        "Goalkeeper": "GK", "CentreBack": "CB", "LeftBack": "LB", "RightBack": "RB",
+        "DefensiveMidfield": "DM", "CentreMidfield": "CM", "AttackingMidfield": "AM",
+        "LeftWing": "LW", "RightWing": "RW", "CentreForward": "ST_CF",
+    }
+
+    def sci_bucket_family(p) -> set[str]:
+        positions = []
+        for k in ("position1", "position2", "position3"):
+            v = p.get(k)
+            if v:
+                positions.append(v)
+        return {SCI_POS_TO_BUCKET[x] for x in positions if x in SCI_POS_TO_BUCKET}
+
     for item in sci_items:
         player = item.get("player") or {}
         sci_pid = player.get("id")
         sci_name = player.get("name") or ""
         sci_dob_raw = player.get("birthDate")
         sci_dob = _parse_dob(sci_dob_raw)
+        sci_buckets = sci_bucket_family(player)
         ca = item.get("sciskill")
         pa = item.get("potential")
 
@@ -199,10 +222,17 @@ def link_and_write(
         nm = _normalize(sci_name)
         candidates = tm_index.get(nm, [])
 
-        # If unique name match, accept
+        # Pass 1: exact normalised-name match.
+        # Hardening (2026-06-04): when both sides have DOB, require exact match;
+        # one mismatch refuses the link rather than silently accepting.
         chosen = None
         if len(candidates) == 1:
-            chosen = candidates[0]
+            c = candidates[0]
+            if sci_dob and c["dob"] and sci_dob != c["dob"]:
+                # Same exact name but different DOB → different player; refuse.
+                pass
+            else:
+                chosen = c
         elif len(candidates) > 1 and sci_dob:
             year = sci_dob[:4]
             year_hits = [c for c in candidates if c["dob"] and c["dob"].startswith(year)]
@@ -215,17 +245,32 @@ def link_and_write(
                     chosen = exact[0]
 
         if not chosen:
-            # Pass 2: token-subset match (looser names like initials)
+            # Pass 2 (loose token-subset). Hardening 2026-06-04:
+            #   • require ≥ 2 overlapping tokens (kills firstName-only collisions)
+            #   • require DOB-year match if SciSports has DOB
+            #   • require position-bucket family agreement when both sides have
+            #     known positions; bucket-disagreement refuses the link.
             if nm:
                 tokens = set(nm.split())
                 subset_hits = []
                 for tname, cands in tm_index.items():
                     ttok = set(tname.split())
                     if tokens.issubset(ttok) or ttok.issubset(tokens):
-                        subset_hits.extend(cands)
+                        overlap = len(tokens & ttok)
+                        if overlap >= 2:                         # guard 1
+                            for c in cands:
+                                # guard 2: DOB-year match if available
+                                if sci_dob and c.get("dob"):
+                                    if not c["dob"].startswith(sci_dob[:4]):
+                                        continue
+                                # guard 3: bucket compatibility
+                                tm_b = c.get("position_bucket")
+                                if tm_b and sci_buckets and tm_b not in sci_buckets:
+                                    continue
+                                subset_hits.append(c)
                 if sci_dob:
                     year = sci_dob[:4]
-                    year_subset = [c for c in subset_hits if c["dob"] and c["dob"].startswith(year)]
+                    year_subset = [c for c in subset_hits if c.get("dob") and c["dob"].startswith(year)]
                     if len(year_subset) == 1:
                         chosen = year_subset[0]
                 elif len(subset_hits) == 1:
