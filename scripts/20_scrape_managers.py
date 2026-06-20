@@ -1,19 +1,38 @@
 """
-Step 20 — Scrape current manager + tenure + contract for every club in club_pressure.
+Step 20 — Scrape current manager + tenure for every club in club_pressure.
 
-For each of the ~354 clubs, fetch the TM Mitarbeiter (Staff) page:
-    https://www.transfermarkt.com/--/mitarbeiter/verein/{club_id}
+For each of the ~354 clubs, fetch the TM manager-history page:
+    https://www.transfermarkt.com/--/mitarbeiterhistorie/verein/{club_id}/personalie/Trainer
 
-Parse the head-coach row (first row of the "Coaching Staff" section):
-    name | title (Manager / Interim Manager / Caretaker Manager / ...)
-         | appointment date (DD/MM/YYYY) | contract end (DD.MM.YYYY)
+This page is static HTML and lists head coaches newest-first in a single history
+table (headers: Name/DoB | Nat | Appointed | End of time in post | Time in post |
+Matches | PPG). The FIRST (newest) row is the current head coach. We take:
+    manager_name      — from the trainer-profile link in the first row
+    appointment_date  — the first row's "Appointed" date (drives tenure_months)
+
+Why this page (Phase A fix — lifted from the maps repo's
+src/mmm/sync/scrape_tm_manager.py): the old /mitarbeiter (Staff) page + "first
+row of Coaching Staff" heuristic was wrong and fragile. For clubs where the head
+coach isn't the first Coaching-Staff row — or isn't on that page at all
+(Liverpool's /mitarbeiter lists only goalkeeping coaches) — it grabbed an
+assistant. The history page's newest entry is canonical and TM-updated within
+hours of any change.
+
+What this page does NOT carry (so these columns are now NULL, where the old —
+wrong-person — scraper used to guess them):
+    manager_title       — no Manager/Interim/Caretaker column on the history page
+    contract_end_date   — "End of time in post" is the departure date (blank for
+                          the incumbent), not the manager's contract expiry
 
 Politeness: 1.5s sleep between live fetches, 30s backoff on 429/503.
-Caching: per-club HTML at data/tm_cache/manager_{club_id}.html — re-runs are instant.
-Stores results in a new SQLite table `club_manager` (PK: club_id).
+Caching: per-club HTML at data/tm_cache/manager_trainer_{club_id}.html — re-runs
+are instant. (Distinct filename from the retired Staff-page cache so stale
+wrong-page HTML is never reused.)
+Stores results in SQLite table `club_manager` (PK: club_id).
 
-Feeds into 18_manual_flags_excel.py which derives manager_change_flag via
-a four-rule auto-derivation (see CLAUDE.md "Manual flag pattern").
+Feeds into 18_manual_flags_excel.py which derives manager_change_flag (tenure ≤ 6mo
+and vacancy rules still fire off manager_name + tenure_months; the interim-title
+and contract-expiry rules no longer fire — they relied on the wrong-page data).
 """
 
 import re
@@ -41,15 +60,22 @@ CACHE_DIR = Path("data/tm_cache")
 CACHE_DIR.mkdir(parents=True, exist_ok=True)
 _ssl_context = ssl.create_default_context(cafile=certifi.where())
 
+_TRAINER_HREF = re.compile(r"/profil/trainer/\d+")
+
+
+def _manager_history_url(club_id: str) -> str:
+    return (f"https://www.transfermarkt.com/--/mitarbeiterhistorie/verein/"
+            f"{club_id}/personalie/Trainer")
+
 
 # ─── HTTP + cache ──────────────────────────────────────────────────────────────
 
 def fetch(club_id: str) -> str | None:
-    """Return staff-page HTML for a club_id; cached at data/tm_cache/manager_{cid}.html."""
-    cache_path = CACHE_DIR / f"manager_{club_id}.html"
+    """Return manager-history-page HTML; cached at manager_trainer_{cid}.html."""
+    cache_path = CACHE_DIR / f"manager_trainer_{club_id}.html"
     if cache_path.exists():
         return cache_path.read_text(encoding="utf-8")
-    url = f"https://www.transfermarkt.com/--/mitarbeiter/verein/{club_id}"
+    url = _manager_history_url(club_id)
     time.sleep(SLEEP_BETWEEN)
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     try:
@@ -78,7 +104,7 @@ def fetch(club_id: str) -> str | None:
 # ─── Parser ────────────────────────────────────────────────────────────────────
 
 def _parse_date_flexible(text: str | None) -> date | None:
-    """Handles both DD/MM/YYYY (appointment) and DD.MM.YYYY (contract end)."""
+    """Handles DD/MM/YYYY and DD.MM.YYYY."""
     if not text:
         return None
     text = text.strip()
@@ -94,52 +120,58 @@ def _parse_date_flexible(text: str | None) -> date | None:
         return None
 
 
-def parse_head_coach(html: str) -> dict:
-    """Extract head coach details from a Mitarbeiter page.
+def _row_manager_name(row) -> str | None:
+    """First trainer-profile link with a non-empty name (title attr or text)."""
+    for a in row.find_all("a", href=_TRAINER_HREF):
+        name = (a.get("title") or a.get_text(strip=True) or "").strip()
+        if name:
+            return name
+    return None
 
-    Returns a dict with keys: manager_name, manager_title, appointment_date,
-    contract_end_date. Values are None if not parsed. Missing 'Coaching Staff'
-    section yields all-None.
+
+def parse_current_manager(html: str) -> dict:
+    """Extract current head coach from a manager-history page.
+
+    Returns {manager_name, manager_title, appointment_date, contract_end_date}.
+    The history table is newest-first, so its first data row is the incumbent.
+    title/contract_end are always None (not present on this page) — see module docstring.
     """
     out = {"manager_name": None, "manager_title": None,
            "appointment_date": None, "contract_end_date": None}
     soup = BeautifulSoup(html, "lxml")
-    for h2 in soup.find_all("h2"):
-        if h2.get_text(strip=True).lower() != "coaching staff":
+
+    # Locate the history table by its header set (contains an "Appointed" column).
+    table = None
+    for tbl in soup.find_all("table"):
+        heads = [th.get_text(strip=True).lower() for th in tbl.find_all("th")]
+        if "appointed" in heads:
+            table = tbl
+            break
+
+    if table is None:
+        # Page-structure fallback: maps' doc-wide first non-empty trainer link.
+        # Recovers the name even if the history table can't be located.
+        for a in soup.find_all("a", href=_TRAINER_HREF):
+            name = (a.get("title") or a.get_text(strip=True) or "").strip()
+            if name:
+                out["manager_name"] = name
+                break
+        return out
+
+    header_idx: dict[str, int] = {}
+    for tr in table.find_all("tr"):
+        ths = tr.find_all("th")
+        if ths:
+            header_idx = {th.get_text(strip=True).lower(): i for i, th in enumerate(ths)}
             continue
-        box = h2.find_parent("div", class_="box")
-        if not box:
-            return out
-        rt = box.find("div", class_="responsive-table")
-        if not rt:
-            return out
-        table = rt.find("table")
-        if not table:
-            return out
-        tbody = table.find("tbody") or table
-        first_row = tbody.find("tr")
-        if not first_row:
-            return out
-        cells = first_row.find_all("td", recursive=False)
-        if not cells:
-            return out
-        # Cell 0: inline-table with name + title
-        inline = cells[0].find("table", class_="inline-table")
-        if inline:
-            link = inline.find("a")
-            if link:
-                out["manager_name"] = link.get_text(strip=True) or None
-            title_rows = inline.find_all("tr")
-            if len(title_rows) >= 2:
-                title_td = title_rows[1].find("td")
-                if title_td:
-                    out["manager_title"] = title_td.get_text(strip=True) or None
-        # Cell 3: appointment date; Cell 4: contract end date.
-        # (Defend against TM column shuffles by checking cell count.)
-        if len(cells) > 3:
-            out["appointment_date"] = _parse_date_flexible(cells[3].get_text(strip=True))
-        if len(cells) > 4:
-            out["contract_end_date"] = _parse_date_flexible(cells[4].get_text(strip=True))
+        # First non-header row that carries a trainer link = newest manager.
+        if not tr.find("a", href=_TRAINER_HREF):
+            continue
+        out["manager_name"] = _row_manager_name(tr)
+        cells = tr.find_all("td", recursive=False)
+        ai = header_idx.get("appointed")
+        if ai is not None and ai < len(cells):
+            out["appointment_date"] = _parse_date_flexible(cells[ai].get_text(strip=True))
         break
     return out
 
@@ -153,10 +185,10 @@ CREATE TABLE club_manager (
     club_name            TEXT NOT NULL,
     league_id            TEXT,
     manager_name         TEXT,
-    manager_title        TEXT,
+    manager_title        TEXT,       -- NULL: not on the manager-history page
     appointment_date     DATE,
-    contract_end_date    DATE,
-    tenure_months        INTEGER,   -- computed: months between appointment_date and snapshot
+    contract_end_date    DATE,       -- NULL: not on the manager-history page
+    tenure_months        INTEGER,    -- computed: months between appointment_date and snapshot
     source_url           TEXT,
     scraped_at           TEXT NOT NULL
 );
@@ -187,7 +219,7 @@ def main() -> None:
 
         n_total = len(clubs)
         cached_before = sum(1 for cid, *_ in clubs
-                            if (CACHE_DIR / f"manager_{cid}.html").exists())
+                            if (CACHE_DIR / f"manager_trainer_{cid}.html").exists())
         print(f"Scraping manager data for {n_total} clubs "
               f"({cached_before} already cached, {n_total - cached_before} fresh fetches at "
               f"~{(n_total - cached_before) * SLEEP_BETWEEN / 60:.1f} min wall time)")
@@ -198,8 +230,7 @@ def main() -> None:
 
         rows_to_insert: list[tuple] = []
         n_parsed = 0
-        n_no_section = 0  # 'Coaching Staff' section missing
-        n_no_name = 0     # section present but no name parsed (vacancy?)
+        n_no_name = 0     # history page reached but no trainer parsed (vacancy / new club)
         n_fetch_fail = 0
 
         for i, (cid, name, lid) in enumerate(clubs, start=1):
@@ -208,17 +239,12 @@ def main() -> None:
                 n_fetch_fail += 1
                 rows_to_insert.append((
                     cid, name, lid, None, None, None, None, None,
-                    f"https://www.transfermarkt.com/--/mitarbeiter/verein/{cid}",
-                    snapshot.isoformat(),
+                    _manager_history_url(cid), snapshot.isoformat(),
                 ))
                 continue
-            parsed = parse_head_coach(html)
-            if parsed["manager_name"] is None and parsed["manager_title"] is None:
-                # Section likely missing or parse-fail
-                if "Coaching Staff" in html:
-                    n_no_name += 1
-                else:
-                    n_no_section += 1
+            parsed = parse_current_manager(html)
+            if parsed["manager_name"] is None:
+                n_no_name += 1
             else:
                 n_parsed += 1
             tenure_months = None
@@ -231,13 +257,12 @@ def main() -> None:
                 parsed["appointment_date"].isoformat() if parsed["appointment_date"] else None,
                 parsed["contract_end_date"].isoformat() if parsed["contract_end_date"] else None,
                 tenure_months,
-                f"https://www.transfermarkt.com/--/mitarbeiter/verein/{cid}",
-                snapshot.isoformat(),
+                _manager_history_url(cid), snapshot.isoformat(),
             ))
             if i % 50 == 0 or i == n_total:
                 print(f"  [{i}/{n_total}] {name[:36]:36s}  "
                       f"{parsed['manager_name'] or '(no manager)':28s}  "
-                      f"{parsed['manager_title'] or '':24s}")
+                      f"appt={parsed['appointment_date'] or '—'}")
 
         con.executemany("""
             INSERT INTO club_manager
@@ -250,30 +275,20 @@ def main() -> None:
         con.commit()
 
     print()
-    print(f"Done. {n_parsed} clubs parsed with manager info, "
-          f"{n_no_name} clubs with 'Coaching Staff' section but no name (likely vacancy), "
-          f"{n_no_section} clubs missing 'Coaching Staff' section, "
+    print(f"Done. {n_parsed} clubs parsed with a manager, "
+          f"{n_no_name} clubs with no manager parsed (vacancy / new club / parse-miss), "
           f"{n_fetch_fail} fetch failures.")
-    # Show a quick title-distribution sanity check
     with sqlite3.connect(config.SQLITE_FILE) as con:
-        print()
-        print("Title distribution (top 15):")
-        for title, n in con.execute("""
-            SELECT manager_title, COUNT(*) FROM club_manager
-            WHERE manager_title IS NOT NULL
-            GROUP BY manager_title
-            ORDER BY COUNT(*) DESC
-            LIMIT 15
+        n_with_appt = con.execute(
+            "SELECT COUNT(*) FROM club_manager WHERE appointment_date IS NOT NULL"
+        ).fetchone()[0]
+        print(f"{n_with_appt} clubs have an appointment date (→ tenure_months).")
+        print("\nSample (first 10 by league):")
+        for nm, mgr, appt in con.execute("""
+            SELECT club_name, manager_name, appointment_date FROM club_manager
+            WHERE manager_name IS NOT NULL ORDER BY league_id, club_name LIMIT 10
         """).fetchall():
-            print(f"  {n:>4d}  {title}")
-        n_interim = con.execute("""
-            SELECT COUNT(*) FROM club_manager
-            WHERE manager_title IS NOT NULL
-              AND (lower(manager_title) LIKE '%interim%'
-                   OR lower(manager_title) LIKE '%caretaker%'
-                   OR lower(manager_title) LIKE '%acting%')
-        """).fetchone()[0]
-        print(f"\nClubs with interim/caretaker/acting title: {n_interim}")
+            print(f"  {nm[:34]:34s}  {mgr[:26]:26s}  {appt or '—'}")
 
 
 if __name__ == "__main__":
