@@ -16,7 +16,7 @@ yatin-matcher/
 ├── data/
 │   ├── transfermarkt-datasets.duckdb      # dcaribou's weekly snapshot (read-only)
 │   ├── tm_cache/                          # Scraped HTML + JSON (transfer history, profiles, squads)
-│   ├── market_maps/                       # 8 manual .xlsx downloads of the Google Sheets demand maps
+│   ├── market_maps/                       # DEPRECATED (Phase 6): old manual .xlsx demand-map copies; see README.md
 │   ├── manual_flags.xlsx                  # Day 4: structured checklist (was manual_flags.csv pre-Day 4)
 │   ├── manual_flags.csv                   # Legacy CSV — replaced by xlsx but kept for migration safety
 │   ├── manual_league_overrides.csv        # Day 4: hand-curated league corrections (promotion/relegation lag)
@@ -35,7 +35,8 @@ yatin-matcher/
 │   ├── 11_patch_loans.py                  # Detect "On loan from X" via TM profile HTML
 │   ├── 13_scrape_fees.py                  # Backfill last_fee_paid_eur via TM transferHistory JSON
 │   ├── 15_define_demand_schema.py         # Day 4: schema for 4 map_* demand-side tables
-│   ├── 16_load_market_maps.py             # Day 4: load 8 manual workbooks → map_* tables (with cross-league fallback matcher)
+│   ├── 16_load_market_maps.py             # RETIRED (Phase 6) → stub raises; see scripts/_retired/16_load_market_maps.py.bak
+│   ├── 16b_load_maps_exports.py           # Phase 6: load the maps export interface → map_* tables (joins on tm_club_id)
 │   ├── 17_export_demand_sheets.py         # Day 4: Sheets 5/6/7 (Live Demand, Live Supply, Demand Map Mirror)
 │   ├── 18_manual_flags_excel.py           # Day 4: migrate manual_flags.csv → structured manual_flags.xlsx
 │   ├── 19_apply_league_overrides.py       # Day 4: cascade hand-curated league corrections across all tables
@@ -107,6 +108,20 @@ The contract cutoff is **end-of-season-aware** (via `config.end_of_season_plus`)
 - **TM transferHistory JSON endpoint** (`/ceapi/transferHistory/list/{player_id}`): undocumented but stable — fee strings, dates, loan vs permanent distinction
 - **TM kader (squad) pages** for second-tier clubs: per-club roster scrape
 - **TM profile HTML** for loan detection: `<a title="On loan from {Club} until {date}">` is the reliable marker
+- **Maps export interface** (demand side, Phase 6): `~/market-movement-maps/exports/latest/` (override via `MAPS_EXPORTS_PATH`). The Market Movement Maps repo is the single source of truth for the demand layer — it resolves clubs to TM ids and publishes `_manifest.json` + per-table JSON/xlsx. **This replaced the old `data/market_maps/` manual-copy zone, which is now deprecated** (see `data/market_maps/README.md`). Loaded by `scripts/16b_load_maps_exports.py`. Column-level docs: the maps repo's `exports/latest/_SCHEMA.md`. See "Consuming the maps export interface" below.
+
+### Consuming the maps export interface (Phase 6)
+
+The matcher reads the maps repo's versioned export rather than 8 hand-copied workbooks. `scripts/16b_load_maps_exports.py`:
+
+1. **Resolves the export path** — `~/market-movement-maps/exports/latest/` by default, `MAPS_EXPORTS_PATH` to override. Fails loudly if the path or `_manifest.json` is missing.
+2. **Validates the manifest contract** (hard-fail unless noted): `schema_version` major must equal `SUPPORTED_SCHEMA_MAJOR` (1 today — a major bump means the loader needs updating); `club_request.validated_by` must NOT be redacted (if it is, regenerate the maps export with `MMM_LOCAL_MODE=1`); `calibration_agreement_pct` must sit in [50, 80]; `resolution_violations` non-empty → warn per league and continue.
+3. **Joins on `tm_club_id`** — the export's `club.json` carries the Transfermarkt id for every club, so the old in-league + cross-league name-matcher is gone (retired with `scripts/16_load_market_maps.py`). The matcher's `map_*.club_id` = the export's `tm_club_id`.
+4. **Populates the four `map_*` tables**: `club_overview.json → map_club_overview`, `club_requests.json → map_club_requests` (only `source_origin='workbook'` rows — the export's inference rows are ignored because the matcher runs its own inference via script 21), `club_tracker.json → map_club_tracker`. `map_demand_signal` is **derived** from the loaded requests (the export's `live_demand_signal` is a per-club ranked list with an incompatible shape).
+
+**Two transforms to know about:** (a) **Budget** — the export's `club_request` no longer carries per-request fee/wage caps, so the loader joins `club_overview.workbook_highest_transfer_fee_eur` + `max_salary_pw_eur` onto each request by club (these matched the old per-request values for 184/185 clubs). `club_budget_derived` carries a newer multiplier-adjusted figure — a future enhancement, not used yet. (b) **Position vocab** — the export's canonical 10 use `CF`; the matcher uses `ST_CF`. The loader maps `CF → ST_CF`; every other code is identical.
+
+**League overrides are warning-only in the loader, but script 19 still actively corrects.** The current export reflects 25/26 leagues (its data snapshot predates promotion/relegation); `data/manual_league_overrides.csv` encodes 26/27. So the export disagrees with the overrides for ~19 promoted/relegated clubs (incl. the Wolves/Burnley/West Ham relegated mandate cohort). 16b logs each disagreement as a warning but does NOT re-apply. **Script 19's post-16b run is kept ACTIVE** (not warning-only as Phase 6 originally specced) precisely because the export doesn't yet carry these overrides — without it, a club's demand and its players would land in different leagues. Retire 19's active role only once the maps pipeline applies the overrides at source.
 
 ### Loan attribution (Day 3.5)
 
@@ -249,7 +264,7 @@ The €15m floor came from Ryan's Day 5 framing: clubs that can stretch budgets 
 
 | Source | Built by | Demand-intensity weight | Rationale |
 |---|---|---|---|
-| `map_club_requests` (explicit) | `scripts/16_load_market_maps.py` from 8 manual Google Sheets | 1.00 (Agent/YES), 0.85 (Agent/other), 0.60 (Intel/NO), 0.50 (NULL/NULL) | High-signal — agent or intel verified |
+| `map_club_requests` (explicit) | `scripts/16b_load_maps_exports.py` from the maps export interface | 1.00 (Agent/YES), 0.85 (Agent/other), 0.60 (Intel/NO), 0.50 (NULL/NULL) | High-signal — agent or intel verified |
 | `inferred_club_requests` (synthetic) | `scripts/21_infer_demand.py` from `senior_roster` thinness | 0.40 | Lower-signal — derived from squad-gap heuristic |
 
 Inferred demand fires for a (club, bucket) pair when active headcount ≤ a "thin" threshold (GK ≤1, CB ≤2, LB ≤1, RB ≤1, CM ≤2, LW ≤1, RW ≤1, ST_CF ≤2 — DM/AM skipped because they're formation-dependent). Budget proxy uses `map_club_overview.highest_transfer_fee_2526_eur` for mapped clubs (so PSV/Ajax/Benfica/Sporting/Porto/Braga get their real spending power) and a conservative tier default for unmapped clubs (Tier A €25m, Tier B €5m, Tier C €3m, Tier D €15m). Inferred is suppressed where explicit demand for the same (club, bucket) already exists.
@@ -279,7 +294,7 @@ Seeded on first `19_apply_league_overrides.py` run with 4 known cases:
 
 `19_apply_league_overrides.py` cascades the corrections across every table that carries a league_id: `player_universe`, `senior_roster`, `club_pressure`, `map_club_overview`, `map_club_tracker`, `map_club_requests` — and re-derives `map_demand_signal`. Idempotent. To add/remove an override: edit the CSV and re-run 19.
 
-**Pipeline position**: 19 runs twice — once before `08_compute_pressure.py` (so 08 computes pressure with corrected leagues and applies the second-tier "external" net_spend rule to the right cohort), then again after `16_load_market_maps.py` (to override the workbook's league tags on the map_* tables). See "Re-running the pipeline" below for the canonical order.
+**Pipeline position**: 19 runs twice — once before `08_compute_pressure.py` (so 08 computes pressure with corrected leagues and applies the second-tier "external" net_spend rule to the right cohort), then again after `16b_load_maps_exports.py` (to correct the map_* league tags, which the maps export still carries at their 25/26 values — see "Consuming the maps export interface"). See "Re-running the pipeline" below for the canonical order.
 
 ### Loader matching (Day 4)
 
@@ -526,8 +541,8 @@ After a code change or fresh dcaribou snapshot:
 .venv/bin/python scripts/10_export_pressure_sheets.py
 # ── Day 4 demand-side layer ────────────────────────────────────────────────
 .venv/bin/python scripts/15_define_demand_schema.py
-.venv/bin/python scripts/16_load_market_maps.py
-.venv/bin/python scripts/19_apply_league_overrides.py    # post-16: corrects map_* tables created by 16
+.venv/bin/python scripts/16b_load_maps_exports.py        # Phase 6: load maps export interface (was 16_load_market_maps.py)
+.venv/bin/python scripts/19_apply_league_overrides.py    # post-16b: corrects map_* league tags (export carries 25/26 leagues)
 .venv/bin/python scripts/17_export_demand_sheets.py
 .venv/bin/python scripts/18_manual_flags_excel.py        # refreshes manual_flags.xlsx from updated club_pressure
 .venv/bin/python scripts/reconcile_scisports.py          # refreshes data/scisports_ratings.xlsx against new cohort
