@@ -166,6 +166,23 @@ def build_club_xref(club_rows: list[dict]) -> dict[int, dict]:
     }
 
 
+def build_derived_fee_by_tm(budget_rows: list[dict], club_xref: dict[int, dict]) -> dict[int, int]:
+    """maps club_id → derived_highest_transfer_fee_eur, re-keyed to tm_club_id.
+
+    The methodology's canonical transfer budget (empirical promotion/relegation
+    multipliers applied). Used as map_club_requests.max_transfer_fee_eur (Phase 6.1).
+    """
+    out: dict[int, int] = {}
+    for r in budget_rows:
+        xref = club_xref.get(r["club_id"])
+        if not xref or xref["tm_club_id"] is None:
+            continue
+        fee = r.get("derived_highest_transfer_fee_eur")
+        if fee is not None:
+            out[int(xref["tm_club_id"])] = fee
+    return out
+
+
 def build_league_xref(league_rows: list[dict], valid_codes: set[str]) -> dict[str, str | None]:
     """export league_id (ENG1) → matcher code (GB1), or None if outside the universe."""
     out: dict[str, str | None] = {}
@@ -252,7 +269,8 @@ def _richness(row: dict) -> int:
                ("validated_by", "linked_shortlisted_player", "role_notes"))
 
 
-def transform_requests(rows, club_xref, league_by_tm, budget_by_tm, snapshot, skip_log):
+def transform_requests(rows, club_xref, league_by_tm, budget_by_tm,
+                       derived_fee_by_tm, snapshot, skip_log):
     """club_requests.json (workbook origin only) → deduped map_club_requests rows.
 
     The export is REQUEST-grained: the same logical demand (e.g. club 595 wants a
@@ -264,9 +282,16 @@ def transform_requests(rows, club_xref, league_by_tm, budget_by_tm, snapshot, sk
         (club, position_bucket, preferred_side, source, validated)
     keeping the descriptively-richest row. This is the granularity the retired
     workbook loader produced (pre-migration: 1058 distinct vs 2140 raw export rows).
+
+    Budget (Phase 6.1): max_transfer_fee_eur is the methodology's canonical
+    club_budget_derived.derived_highest_transfer_fee_eur (empirical promotion/
+    relegation multipliers applied), falling back to the workbook figure only
+    where the derived table has no row. max_wage_pw_eur stays the workbook
+    club_overview.max_salary_pw_eur (derived covers transfer fee, not wage).
     """
     by_key: dict[tuple, dict] = {}
     skipped_no_league = 0
+    fee_source_counts = {"derived": 0, "workbook_fallback": 0}
     for r in rows:
         if r.get("source_origin") != "workbook":
             continue                  # maps-side inference handled by script 21 instead
@@ -278,7 +303,14 @@ def transform_requests(rows, club_xref, league_by_tm, budget_by_tm, snapshot, sk
         if league is None:
             skipped_no_league += 1    # club has no overview row → no league/budget
             continue
-        fee, wage = budget_by_tm.get(tm, (None, None))
+        workbook_fee, wage = budget_by_tm.get(tm, (None, None))
+        derived_fee = derived_fee_by_tm.get(tm)
+        if derived_fee is not None:
+            fee = derived_fee
+            fee_source_counts["derived"] += 1
+        else:
+            fee = workbook_fee        # derived table has no row for this club
+            fee_source_counts["workbook_fallback"] += 1
         bucket = to_matcher_bucket(r.get("position"))
         side = r.get("workbook_preferred_side")
         source = r.get("source")
@@ -315,6 +347,11 @@ def transform_requests(rows, club_xref, league_by_tm, budget_by_tm, snapshot, sk
     skip_log.append(
         f"requests: collapsed {n_raw} request-grained export rows → {len(by_key)} "
         f"club-bucket-grained demand rows (deduped operational duplicates)"
+    )
+    skip_log.append(
+        f"requests: budget source = {fee_source_counts['derived']} derived / "
+        f"{fee_source_counts['workbook_fallback']} workbook-fallback "
+        f"(club_budget_derived, Phase 6.1)"
     )
     return list(by_key.values())
 
@@ -443,16 +480,19 @@ def main() -> None:
     overview_rows = read_table(export_dir, manifest, "club_overview")
     tracker_rows = read_table(export_dir, manifest, "club_tracker")
     request_rows = read_table(export_dir, manifest, "club_request")
+    budget_rows = read_table(export_dir, manifest, "club_budget_derived")
 
     club_xref = build_club_xref(club_rows)
     league_xref = build_league_xref(league_rows, valid_codes)
+    derived_fee_by_tm = build_derived_fee_by_tm(budget_rows, club_xref)
 
     skip_log: list[str] = []
     overview, budget_by_tm, league_by_tm = transform_overview(
         overview_rows, club_xref, league_xref, snapshot, skip_log)
     tracker = transform_tracker(tracker_rows, club_xref, league_by_tm, snapshot, skip_log)
     requests = transform_requests(
-        request_rows, club_xref, league_by_tm, budget_by_tm, snapshot, skip_log)
+        request_rows, club_xref, league_by_tm, budget_by_tm,
+        derived_fee_by_tm, snapshot, skip_log)
 
     if skip_log:
         print(f"\nSkip log ({len(skip_log)} entries):")

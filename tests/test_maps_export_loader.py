@@ -116,6 +116,11 @@ def _write_export(dirpath: Path) -> None:
         {"club_id": 1, "position": "GK", "status": "Open"},
         {"club_id": 1, "position": "CF", "status": "Covered"},  # CF → ST_CF in bucket_10
     ])
+    # club_budget_derived: club 1 has a derived fee distinct from its workbook fee
+    # (17m) so the test proves the loader uses derived. club 2 absent → workbook fallback.
+    dump("club_budget_derived.json", [
+        {"club_id": 1, "derived_highest_transfer_fee_eur": 25000000},
+    ])
     dump("club_requests.json", [
         # workbook request — must load, CF → ST_CF, budget joined from overview
         {"club_id": 1, "position": "CF", "source": "Agent", "validated": "YES",
@@ -136,6 +141,12 @@ def _write_export(dirpath: Path) -> None:
          "validated_by": None, "role_notes": None, "linked_shortlisted_players": None,
          "date_last_updated": None, "workbook_position_category": "Centre Back",
          "workbook_preferred_side": "Left", "source_origin": "inference"},
+        # workbook request for club 2 (absent from club_budget_derived) — budget
+        # must fall back to the workbook fee (8m).
+        {"club_id": 2, "position": "GK", "source": "Agent", "validated": "NO",
+         "validated_by": None, "role_notes": None, "linked_shortlisted_players": None,
+         "date_last_updated": None, "workbook_position_category": "Goalkeeper",
+         "workbook_preferred_side": "Either", "source_origin": "workbook"},
         # workbook request for an NL2 club — skipped (no matcher-universe league)
         {"club_id": 3, "position": "LB", "source": "Agent", "validated": "NO",
          "validated_by": None, "role_notes": None, "linked_shortlisted_players": None,
@@ -151,6 +162,7 @@ def _write_export(dirpath: Path) -> None:
             "club_overview": {"json": "club_overview.json"},
             "club_tracker": {"json": "club_tracker.json"},
             "club_request": {"json": "club_requests.json"},
+            "club_budget_derived": {"json": "club_budget_derived.json"},
         },
     }
     (dirpath / "_manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
@@ -184,8 +196,8 @@ def test_per_table_read_populates_all_four(tmp_path, monkeypatch):
     n_ds = con.execute("SELECT COUNT(*) FROM map_demand_signal").fetchone()[0]
     assert n_ov == 2          # Alpha + Beta; NL2 club skipped
     assert n_tr == 2          # both Alpha tracker rows
-    assert n_rq == 1          # workbook only; duplicate collapsed, inference + NL2 skipped
-    assert n_ds == 1          # derived: (GB1, ST_CF)
+    assert n_rq == 2          # club1 ST_CF (dup collapsed) + club2 GK; inference + NL2 skipped
+    assert n_ds == 2          # derived: (GB1, ST_CF) and (GB1, GK)
 
 
 def test_request_dedup_keeps_richest(tmp_path, monkeypatch):
@@ -206,12 +218,13 @@ def test_tm_club_id_direct_join(tmp_path, monkeypatch):
     assert overview_ids == {"100", "200"}      # tm ids, NOT maps ids 1/2
     req = con.execute(
         "SELECT club_id, league, position_bucket, max_transfer_fee_eur, "
-        "max_wage_pw_eur, validated_by FROM map_club_requests").fetchone()
+        "max_wage_pw_eur, validated_by FROM map_club_requests "
+        "WHERE position_bucket='ST_CF'").fetchone()
     assert req[0] == "100"                     # joined via club.json tm_club_id
     assert req[1] == "GB1"                     # league via league.json dcaribou_code
     assert req[2] == "ST_CF"                   # CF → ST_CF
-    assert req[3] == 17000000                  # budget joined from club_overview
-    assert req[4] == 50000                     # wage joined from club_overview
+    assert req[3] == 25000000                  # budget = club_budget_derived (Phase 6.1), not workbook 17m
+    assert req[4] == 50000                     # wage still from club_overview.max_salary_pw_eur
     assert req[5] == "Jane Agent"              # un-redacted validator preserved
 
 
