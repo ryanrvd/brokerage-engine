@@ -70,3 +70,8 @@ Thumbs.db
 build/
 dist/
 *.egg-info/
+
+# Phase 6 parity-check artifacts (local only, never committed)
+.maps_export_parity/
+BrokerageWorkbook.pre6.xlsx
+pre6_matches.csv
