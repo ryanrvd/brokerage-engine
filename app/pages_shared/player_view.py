@@ -757,7 +757,8 @@ else:
     )
     matches_df["buyer_league_display"] = matches_df["buyer_league_id"].apply(labels.league_name)
     matches_df["demand_label"] = matches_df.apply(
-        lambda r: ui.demand_intensity_label(r["request_source"], r["request_validated"]),
+        lambda r: ui.demand_intensity_label(r["request_source"], r["request_validated"],
+                                            r.get("request_source_origin")),
         axis=1,
     )
     matches_df["budget_fit_pct"] = (matches_df["budget_fit"] * 100).round(1)

@@ -52,9 +52,18 @@ BUCKET_DISPLAY = {
     "ST_CF": "ST_CF (Centre Forward)",
 }
 
-# Source-of-truth count for the footnote.
-DEMAND_LEAGUES_COVERED = 10
 DEMAND_LEAGUES_TOTAL = 19
+
+
+def _demand_coverage(con: sqlite3.Connection) -> tuple[int, dict[str, int]]:
+    """(leagues with any loaded request, {source_origin: row count}) for the footnote."""
+    n_leagues = con.execute(
+        "SELECT COUNT(DISTINCT league) FROM map_club_requests WHERE position_bucket IS NOT NULL"
+    ).fetchone()[0]
+    by_origin = dict(con.execute(
+        "SELECT COALESCE(source_origin, 'unknown'), COUNT(*) FROM map_club_requests GROUP BY 1"
+    ).fetchall())
+    return n_leagues, by_origin
 
 
 # ─── Workbook helpers ───────────────────────────────────────────────────────────
@@ -151,13 +160,13 @@ def write_demand_signal_sheet(wb: Workbook, con: sqlite3.Connection) -> int:
     ws.freeze_panes = "A2"
     last_col = get_column_letter(len(SHEET5_HEADERS))
     ws.auto_filter.ref = f"A1:{last_col}{len(rows_out) + 1}"
+    n_leagues, by_origin = _demand_coverage(con)
+    origin_txt = ", ".join(f"{n} {o}" for o, n in sorted(by_origin.items()))
     _write_footnote(
         ws,
-        f"Covers {DEMAND_LEAGUES_COVERED} of {DEMAND_LEAGUES_TOTAL} leagues "
-        "(England 1+2, France 1+2, Italy, Spain, Germany, Netherlands, Portugal, Belgium); "
-        "other 9 leagues' demand mapping deferred to Stage 2 per BACKLOG.md "
-        "'Maps Auto-Sync Infrastructure'. Source: data/market_maps/*.xlsx "
-        "(manual Google Sheets downloads, stale on arrival).",
+        f"Covers {n_leagues} of {DEMAND_LEAGUES_TOTAL} leagues. Source: Market Movement "
+        f"Maps export (scripts/16b_load_maps_exports.py) — requests by origin: {origin_txt}. "
+        "'inference' rows are maps-rule output, not curated workbook judgments.",
         after_row=len(rows_out) + 1,
         col_span=len(SHEET5_HEADERS),
     )
@@ -234,8 +243,9 @@ SHEET7_HEADERS = [
     "Source", "Validated", "Validated By",
     "Linked/Shortlisted Players",
     "Source Workbook",
+    "Origin",
 ]
-SHEET7_WIDTHS = [28, 7, 14, 18, 12, 40, 16, 14, 8, 10, 14, 36, 36]
+SHEET7_WIDTHS = [28, 7, 14, 18, 12, 40, 16, 14, 8, 10, 14, 36, 36, 10]
 
 
 def write_demand_mirror_sheet(wb: Workbook, con: sqlite3.Connection) -> int:
@@ -246,26 +256,29 @@ def write_demand_mirror_sheet(wb: Workbook, con: sqlite3.Connection) -> int:
     # group by (club, league, date_last_updated, position_category, preferred_side,
     # role_notes, …) and pick one representative — the bucket duplication is an
     # implementation detail for aggregation, not for presentation here.
+    # Maps-inference rows carry no workbook position_category, so fall back to the
+    # bucket — otherwise every inference row for a club collapses into one.
     rows = con.execute("""
         SELECT MIN(request_id),
                club_name, league, date_last_updated,
-               position_category, preferred_side, role_notes,
+               COALESCE(position_category, position_bucket) AS category,
+               preferred_side, role_notes,
                max_transfer_fee_eur, max_wage_pw_eur,
                source, validated, validated_by,
-               linked_shortlisted_player, source_file
+               linked_shortlisted_player, source_file, source_origin
         FROM map_club_requests
         WHERE workbook_source = 'manual_workbook'
         GROUP BY club_name, league, date_last_updated,
-                 position_category, preferred_side, role_notes,
+                 category, preferred_side, role_notes,
                  max_transfer_fee_eur, max_wage_pw_eur,
                  source, validated, validated_by,
-                 linked_shortlisted_player, source_file
+                 linked_shortlisted_player, source_file, source_origin
         ORDER BY league, club_name, MIN(request_id)
     """).fetchall()
 
     for ri, r in enumerate(rows, start=2):
         (_rid, club, lg, dlu, cat, side, notes, max_fee, max_wage, src,
-         val, val_by, linked, source_file) = r
+         val, val_by, linked, source_file, origin) = r
         ws.cell(row=ri, column=1, value=club)
         ws.cell(row=ri, column=2, value=lg)
         ws.cell(row=ri, column=3, value=dlu)
@@ -279,6 +292,7 @@ def write_demand_mirror_sheet(wb: Workbook, con: sqlite3.Connection) -> int:
         ws.cell(row=ri, column=11, value=val_by)
         ws.cell(row=ri, column=12, value=linked)
         ws.cell(row=ri, column=13, value=source_file)
+        ws.cell(row=ri, column=14, value=origin)
 
     for ri in range(2, len(rows) + 2):
         ws.cell(row=ri, column=7).number_format = '"€"#,##0'
@@ -300,9 +314,10 @@ def main() -> None:
         n5 = write_demand_signal_sheet(wb, con)
         n6 = write_supply_signal_sheet(wb, con)
         n7 = write_demand_mirror_sheet(wb, con)
+        n_leagues, _ = _demand_coverage(con)
     wb.save(WORKBOOK_PATH)
     print(f"Saved {WORKBOOK_PATH.resolve()}")
-    print(f"  Sheet 5 '{SHEET5_NAME}'  — {n5} position buckets ({DEMAND_LEAGUES_COVERED}/{DEMAND_LEAGUES_TOTAL} leagues)")
+    print(f"  Sheet 5 '{SHEET5_NAME}'  — {n5} position buckets ({n_leagues}/{DEMAND_LEAGUES_TOTAL} leagues)")
     print(f"  Sheet 6 '{SHEET6_NAME}'  — {n6} position buckets (19/19 leagues)")
     print(f"  Sheet 7 '{SHEET7_NAME}'  — {n7} consolidated demand rows")
 

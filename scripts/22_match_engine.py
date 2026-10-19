@@ -39,8 +39,14 @@ import config
 
 # ─── Scoring constants ────────────────────────────────────────────────────────
 
-# demand_intensity: (source, validated) → multiplier. See CLAUDE.md.
-def demand_intensity(source: str | None, validated: str | None) -> float:
+# demand_intensity: (source, validated, source_origin) → multiplier. See CLAUDE.md.
+# source_origin='inference' marks maps-side rule output loaded via 16b. Those rows
+# arrive tagged source='Intel'/validated='NO', so origin is checked FIRST: they sit
+# on the inference tier (0.40, same as script 21's roster-thinness rows), not 0.60.
+def demand_intensity(source: str | None, validated: str | None,
+                     source_origin: str | None = None) -> float:
+    if source_origin == "inference":
+        return 0.40
     src = (source or "").strip()
     val = (validated or "").strip().upper()
     if src == "Agent" and val == "YES":
@@ -104,6 +110,7 @@ def init_matches_table(con: sqlite3.Connection) -> None:
             max_wage_pw_eur       INTEGER,
             request_source        TEXT,
             request_validated     TEXT,
+            request_source_origin TEXT,            -- 'workbook' | 'inference' (maps export); NULL for script-21 rows
             preferred_side        TEXT,
             sellability_term      REAL,
             demand_intensity      REAL,
@@ -130,7 +137,7 @@ def init_matches_table(con: sqlite3.Connection) -> None:
             -- arithmetic chain rather than recomputing on the fly. Added 2026-06-05.
             age_mult              REAL,            -- 1.0 / 0.85 / 0.60 / 0.35 (age band)
             demand_term_mult      REAL,            -- 1.0 / 0.75 / 0.5 (agent / intel / inferred)
-            demand_tier_label     TEXT,            -- 'Agent/YES' | 'Intel/NO' | 'Inferred' | …
+            demand_tier_label     TEXT,            -- 'Agent/YES' | 'Intel/NO' | 'Inferred' | 'Inferred (maps)' | …
             level_market_mult     REAL,            -- 1.0 / 0.7 / 0.35 — Market View level multiplier
             pathway_mult          REAL,            -- pathway plausibility multiplier
             pathway_label         TEXT,            -- '2. Bundesliga → Premier League upward' etc.
@@ -230,7 +237,10 @@ def market_age_multiplier(age: int | None) -> float:
 
 
 # Demand term — positional+level signal only; named-player interest dropped
-def market_demand_term(source: str | None, validated: str | None) -> float:
+def market_demand_term(source: str | None, validated: str | None,
+                       source_origin: str | None = None) -> float:
+    if source_origin == "inference":
+        return 0.5  # maps-side inference — same tier as script 21's Inferred
     src = (source or "").strip()
     val = (validated or "").strip().upper()
     if src == "Agent" and val == "YES":
@@ -423,9 +433,10 @@ def score_pair(player_tm: int, sellability: float, buyer_max_fee: int,
                buyer_max_wage_pw: float | None = None,
                player_ca: float | None = None,
                player_pa: float | None = None,
-               club_threshold: float | None = None) -> dict:
+               club_threshold: float | None = None,
+               source_origin: str | None = None) -> dict:
     sell_term = (sellability or 0.0) / 100.0
-    di = demand_intensity(source, validated)
+    di = demand_intensity(source, validated, source_origin)
     # Tiered TM-to-fee multiplier — see config.TM_TO_FEE_BANDS. Honest about
     # the empirical lift varying by player band: low-TM prospects 2×, mid 1.5×,
     # established 1.2×.
@@ -690,7 +701,8 @@ def build_matches(con: sqlite3.Connection) -> tuple[int, int, dict]:
 
     # Pull buyer requests from both explicit (map_club_requests, 8 manual workbooks)
     # and inferred (inferred_club_requests, senior_roster thinness for all 354 clubs).
-    # Distinguished downstream via the `source` column ("Inferred" vs Agent/Intel/...).
+    # Distinguished downstream via the `source` column ("Inferred" vs Agent/Intel/...)
+    # and, within map_club_requests, `source_origin` ('workbook' vs maps 'inference').
     has_inferred = con.execute(
         "SELECT name FROM sqlite_master WHERE type='table' AND name='inferred_club_requests'"
     ).fetchone() is not None
@@ -701,14 +713,14 @@ def build_matches(con: sqlite3.Connection) -> tuple[int, int, dict]:
             SELECT request_id, club_id, club_name, league AS buyer_league,
                    position_bucket, preferred_side,
                    max_transfer_fee_eur, max_wage_pw_eur,
-                   source, validated
+                   source, validated, source_origin
             FROM map_club_requests
             WHERE position_bucket IS NOT NULL AND max_transfer_fee_eur IS NOT NULL
             UNION ALL
             SELECT request_id + 10000000 AS request_id, club_id, club_name, league AS buyer_league,
                    position_bucket, preferred_side,
                    max_transfer_fee_eur, max_wage_pw_eur,
-                   source, validated
+                   source, validated, NULL AS source_origin
             FROM inferred_club_requests
             WHERE position_bucket IS NOT NULL AND max_transfer_fee_eur IS NOT NULL
         """).fetchall()
@@ -717,7 +729,7 @@ def build_matches(con: sqlite3.Connection) -> tuple[int, int, dict]:
             SELECT request_id, club_id, club_name, league AS buyer_league,
                    position_bucket, preferred_side,
                    max_transfer_fee_eur, max_wage_pw_eur,
-                   source, validated
+                   source, validated, source_origin
             FROM map_club_requests
             WHERE position_bucket IS NOT NULL AND max_transfer_fee_eur IS NOT NULL
         """).fetchall()
@@ -815,7 +827,8 @@ def build_matches(con: sqlite3.Connection) -> tuple[int, int, dict]:
         candidates = reqs_by_bucket.get(pbucket, [])
         scored: list[dict] = []
         for req in candidates:
-            (rid, bcid, bname, bleague, _bucket, side, max_fee, max_wage, source, validated) = req
+            (rid, bcid, bname, bleague, _bucket, side, max_fee, max_wage,
+             source, validated, source_origin) = req
             stats["pairs_position_matched"] += 1
             # Self-match exclusion (2026-06-09): a club is never a candidate
             # buyer for a player they already own (parent) or have on loan
@@ -844,7 +857,8 @@ def build_matches(con: sqlite3.Connection) -> tuple[int, int, dict]:
                            player_wage_pw=player_wages.get(pid),
                            buyer_max_wage_pw=max_wage,
                            player_ca=p_ca, player_pa=p_pa,
-                           club_threshold=threshold)
+                           club_threshold=threshold,
+                           source_origin=source_origin)
 
             # Dual-gap level fit — Phase A.8.7. Same multiplier applies to BOTH
             # Brokerage and Market View. Rating-unknown rows still enter the
@@ -869,7 +883,7 @@ def build_matches(con: sqlite3.Connection) -> tuple[int, int, dict]:
 
             sellability_pillar = (psell or 0.0) / 100.0
             age_mult = market_age_multiplier(page)
-            demand_t = market_demand_term(source, validated)
+            demand_t = market_demand_term(source, validated, source_origin)
             level_t = lvl_mult   # dual-gap multiplier is the level term for Market too
             financial_t = float(s["budget_fit"]) * float(s["wage_feasibility"])
             pathway_t = market_pathway_score(pleague, bleague)
@@ -910,7 +924,9 @@ def build_matches(con: sqlite3.Connection) -> tuple[int, int, dict]:
             # the user sees on Sheet 5. "Agent/YES", "Intel/NO", "Inferred" etc.
             _src = (source or "").strip()
             _val = (validated or "").strip().upper()
-            if _src == "Agent":
+            if source_origin == "inference":
+                demand_tier = "Inferred (maps)"
+            elif _src == "Agent":
                 demand_tier = f"Agent/{_val or 'NULL'}"
             elif _src == "Intel":
                 demand_tier = f"Intel/{_val or 'NULL'}"
@@ -962,6 +978,7 @@ def build_matches(con: sqlite3.Connection) -> tuple[int, int, dict]:
                 "max_wage_pw_eur":      max_wage,
                 "source": source,
                 "validated": validated,
+                "source_origin": source_origin,
                 "preferred_side": side,
                 "tier_move": tier_label,
                 "player_ca": p_ca,
@@ -1015,7 +1032,7 @@ def build_matches(con: sqlite3.Connection) -> tuple[int, int, dict]:
                 pname, pbucket, ptm, psell,
                 m["buyer_club_id"], m["buyer_club_name"], m["buyer_league_id"],
                 m["max_transfer_fee_eur"], m["max_wage_pw_eur"],
-                m["source"], m["validated"], m["preferred_side"],
+                m["source"], m["validated"], m["source_origin"], m["preferred_side"],
                 m["sellability_term"], m["demand_intensity"], m["budget_fit"],
                 m["wage_feasibility"], m["match_score_raw"], m["match_score"],
                 m["tier_move"], m["wage_label"],
@@ -1038,7 +1055,7 @@ def build_matches(con: sqlite3.Connection) -> tuple[int, int, dict]:
             player_id, buyer_request_id, player_name, position_bucket,
             player_tm_value_eur, sellability_score, buyer_club_id, buyer_club_name,
             buyer_league_id, max_transfer_fee_eur, max_wage_pw_eur,
-            request_source, request_validated, preferred_side,
+            request_source, request_validated, request_source_origin, preferred_side,
             sellability_term, demand_intensity, budget_fit, wage_feasibility,
             match_score_raw, match_score, tier_move, wage_feasibility_label,
             player_wage_pw_eur,
@@ -1050,7 +1067,7 @@ def build_matches(con: sqlite3.Connection) -> tuple[int, int, dict]:
             scarcity_mult, valuation_mult, tension_mult, tension_ratio,
             level_fit_gap_ca, level_fit_gap_pa,
             financial_fit_mult, financial_fit_label
-        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     """, rows_to_insert)
     con.commit()
     # Convert the unrated_players set length for the stats return
@@ -1106,7 +1123,9 @@ def build_rationale(con: sqlite3.Connection, match_row: dict) -> str:
     # Buyer-side driver
     src = (match_row.get("request_source") or "").strip()
     val = (match_row.get("request_validated") or "").strip()
-    if src == "Agent" and val.upper() == "YES":
+    if match_row.get("request_source_origin") == "inference":
+        buyer_text = f"{match_row['buyer_club_name']} ({match_row['buyer_league_id']}) — maps-inferred positional gap"
+    elif src == "Agent" and val.upper() == "YES":
         buyer_text = f"{match_row['buyer_club_name']} ({match_row['buyer_league_id']}) — validated agent-confirmed need"
     elif src == "Intel":
         buyer_text = f"{match_row['buyer_club_name']} ({match_row['buyer_league_id']}) — intel-derived positional gap"

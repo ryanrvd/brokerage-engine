@@ -73,7 +73,10 @@ def contract_years_remaining(ce: str | None, snapshot: date) -> float | None:
         return None
 
 
-def demand_intensity_label(src: str | None, val: str | None) -> str:
+def demand_intensity_label(src: str | None, val: str | None,
+                           origin: str | None = None) -> str:
+    if origin == "inference":
+        return "Inferred (maps)"
     src = (src or "").strip()
     val = (val or "").strip().upper()
     if src == "Agent" and val == "YES":
@@ -129,6 +132,8 @@ def _buyer_text(row: pd.Series) -> str:
 
     src = (row.get("request_source") or "").strip()
     val = (row.get("request_validated") or "").strip().upper()
+    if row.get("request_source_origin") == "inference":
+        return f"{buyer} — maps-inferred positional gap"
     if src == "Agent" and val == "YES":
         return f"{buyer} — validated agent-confirmed need"
     if src == "Intel":
@@ -238,7 +243,7 @@ def build_methodology(row: pd.Series, score_col: str = "market_match_score") -> 
 
     if score_col == "match_score":
         # Brokerage formula: sell × demand_intensity × budget_fit × wage × level_fit_mult.
-        # demand_intensity (Agent=1.0, Intel=0.6, Inferred=0.4) is the Brokerage
+        # demand_intensity (Agent=1.0, Intel=0.6, Inferred/maps-inferred=0.4) is the Brokerage
         # demand scale; demand_term_mult is Market View's parallel (0.75 for Intel).
         demand_brok = row.get("demand_intensity")
         lvl_m_brok = row.get("level_fit_multiplier")
