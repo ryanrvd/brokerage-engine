@@ -30,6 +30,7 @@ from openpyxl.utils import get_column_letter
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import config
+import demand_provenance as dp   # W / M / Y demand-source codes, shared with the app
 
 WORKBOOK_PATH = Path("BrokerageWorkbook.xlsx")
 
@@ -52,9 +53,24 @@ BUCKET_DISPLAY = {
     "ST_CF": "ST_CF (Centre Forward)",
 }
 
-# Source-of-truth count for the footnote.
-DEMAND_LEAGUES_COVERED = 10
 DEMAND_LEAGUES_TOTAL = 19
+
+
+def _has_table(con: sqlite3.Connection, name: str) -> bool:
+    return con.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (name,)
+    ).fetchone() is not None
+
+
+def _demand_coverage(con: sqlite3.Connection) -> tuple[int, dict[str, int]]:
+    """(leagues with any loaded request, {source_origin: row count}) for the footnote."""
+    n_leagues = con.execute(
+        "SELECT COUNT(DISTINCT league) FROM map_club_requests WHERE position_bucket IS NOT NULL"
+    ).fetchone()[0]
+    by_origin = dict(con.execute(
+        "SELECT COALESCE(source_origin, 'unknown'), COUNT(*) FROM map_club_requests GROUP BY 1"
+    ).fetchall())
+    return n_leagues, by_origin
 
 
 # ─── Workbook helpers ───────────────────────────────────────────────────────────
@@ -95,12 +111,15 @@ def _write_footnote(ws, text: str, after_row: int, col_span: int) -> None:
 
 SHEET5_HEADERS = [
     "Position Bucket",
-    "Clubs Needing",
-    "Total Requests",
+    "Clubs with Demand",
+    "Maps-Export Signals (W+M)",
+    "W (workbook)",
+    "M (maps inference)",
+    "Y (matcher inference, not in total)",
     "Top 5 Clubs (by Max Transfer Fee €)",
     "Leagues Represented",
 ]
-SHEET5_WIDTHS = [24, 14, 14, 80, 30]
+SHEET5_WIDTHS = [24, 14, 16, 10, 12, 16, 80, 30]
 
 
 def write_demand_signal_sheet(wb: Workbook, con: sqlite3.Connection) -> int:
@@ -115,13 +134,21 @@ def write_demand_signal_sheet(wb: Workbook, con: sqlite3.Connection) -> int:
         leagues_set: set[str] = set()
         # Aggregate by (club, league) — pick that club's MAX budget across their requests
         club_max_budget: dict[tuple[str, str], int] = {}
+        club_srcs: dict[tuple[str, str], set[str]] = defaultdict(set)
+        src_counts: dict[str, int] = {}
         rows = con.execute("""
-            SELECT club_name, league, max_transfer_fee_eur
+            SELECT club_name, league, max_transfer_fee_eur, source_origin, source
             FROM map_club_requests
             WHERE position_bucket = ?
               AND workbook_source = 'manual_workbook'
         """, (bucket,)).fetchall()
-        for club, lg, budget in rows:
+        n_yatin = con.execute(
+            "SELECT COUNT(*) FROM inferred_club_requests WHERE position_bucket = ?", (bucket,)
+        ).fetchone()[0] if _has_table(con, "inferred_club_requests") else 0
+        for club, lg, budget, origin, source in rows:
+            code = dp.source_code(origin, source)
+            src_counts[code] = src_counts.get(code, 0) + 1
+            club_srcs[(club, lg)].add(code)
             clubs_set.add((club, lg))
             leagues_set.add(lg)
             request_count += 1
@@ -131,13 +158,17 @@ def write_demand_signal_sheet(wb: Workbook, con: sqlite3.Connection) -> int:
                 club_max_budget[key] = b
         top5 = sorted(club_max_budget.items(), key=lambda kv: -kv[1])[:5]
         top5_str = "; ".join(
-            f"{club} ({lg}, €{budget:,})" if budget else f"{club} ({lg}, n/a)"
+            f"[{'/'.join(sorted(club_srcs[(club, lg)]))}] "
+            + (f"{club} ({lg}, €{budget:,})" if budget else f"{club} ({lg}, n/a)")
             for (club, lg), budget in top5
         )
         rows_out.append((
             BUCKET_DISPLAY[bucket],
             len(clubs_set),
             request_count,
+            src_counts.get(dp.WORKBOOK, 0),
+            src_counts.get(dp.MAPS_INFERENCE, 0),
+            n_yatin,
             top5_str,
             ", ".join(sorted(leagues_set)),
         ))
@@ -151,13 +182,15 @@ def write_demand_signal_sheet(wb: Workbook, con: sqlite3.Connection) -> int:
     ws.freeze_panes = "A2"
     last_col = get_column_letter(len(SHEET5_HEADERS))
     ws.auto_filter.ref = f"A1:{last_col}{len(rows_out) + 1}"
+    n_leagues, by_origin = _demand_coverage(con)
+    origin_txt = ", ".join(f"{n} {o}" for o, n in sorted(by_origin.items()))
     _write_footnote(
         ws,
-        f"Covers {DEMAND_LEAGUES_COVERED} of {DEMAND_LEAGUES_TOTAL} leagues "
-        "(England 1+2, France 1+2, Italy, Spain, Germany, Netherlands, Portugal, Belgium); "
-        "other 9 leagues' demand mapping deferred to Stage 2 per BACKLOG.md "
-        "'Maps Auto-Sync Infrastructure'. Source: data/market_maps/*.xlsx "
-        "(manual Google Sheets downloads, stale on arrival).",
+        f"Covers {n_leagues} of {DEMAND_LEAGUES_TOTAL} leagues. Source: Market Movement "
+        f"Maps export (scripts/16b_load_maps_exports.py) — requests by origin: {origin_txt}. "
+        "Src: W = workbook (curated), M = maps inference, Y = matcher squad-thinness "
+        "inference (scripts/21; shown for reference, not in the W+M total). "
+        "M and Y are rule output, not validated requests.",
         after_row=len(rows_out) + 1,
         col_span=len(SHEET5_HEADERS),
     )
@@ -228,14 +261,14 @@ def write_supply_signal_sheet(wb: Workbook, con: sqlite3.Connection) -> int:
 # ─── Sheet 7 — Demand Map Mirror ────────────────────────────────────────────────
 
 SHEET7_HEADERS = [
-    "Club", "League", "Date Last Updated",
+    "Src", "Club", "League", "Date Last Updated",
     "Position Category", "Preferred Side", "Role Notes",
     "Max Transfer Fee (€)", "Max Wage PW (€)",
     "Source", "Validated", "Validated By",
     "Linked/Shortlisted Players",
     "Source Workbook",
 ]
-SHEET7_WIDTHS = [28, 7, 14, 18, 12, 40, 16, 14, 8, 10, 14, 36, 36]
+SHEET7_WIDTHS = [6, 28, 7, 14, 18, 12, 40, 16, 14, 8, 10, 14, 36, 36]
 
 
 def write_demand_mirror_sheet(wb: Workbook, con: sqlite3.Connection) -> int:
@@ -246,49 +279,61 @@ def write_demand_mirror_sheet(wb: Workbook, con: sqlite3.Connection) -> int:
     # group by (club, league, date_last_updated, position_category, preferred_side,
     # role_notes, …) and pick one representative — the bucket duplication is an
     # implementation detail for aggregation, not for presentation here.
+    # Maps-inference rows carry no workbook position_category, so fall back to the
+    # bucket — otherwise every inference row for a club collapses into one.
     rows = con.execute("""
         SELECT MIN(request_id),
                club_name, league, date_last_updated,
-               position_category, preferred_side, role_notes,
+               COALESCE(position_category, position_bucket) AS category,
+               preferred_side, role_notes,
                max_transfer_fee_eur, max_wage_pw_eur,
                source, validated, validated_by,
-               linked_shortlisted_player, source_file
+               linked_shortlisted_player, source_file, source_origin
         FROM map_club_requests
         WHERE workbook_source = 'manual_workbook'
         GROUP BY club_name, league, date_last_updated,
-                 position_category, preferred_side, role_notes,
+                 category, preferred_side, role_notes,
                  max_transfer_fee_eur, max_wage_pw_eur,
                  source, validated, validated_by,
-                 linked_shortlisted_player, source_file
+                 linked_shortlisted_player, source_file, source_origin
         ORDER BY league, club_name, MIN(request_id)
     """).fetchall()
 
     for ri, r in enumerate(rows, start=2):
         (_rid, club, lg, dlu, cat, side, notes, max_fee, max_wage, src,
-         val, val_by, linked, source_file) = r
-        ws.cell(row=ri, column=1, value=club)
-        ws.cell(row=ri, column=2, value=lg)
-        ws.cell(row=ri, column=3, value=dlu)
-        ws.cell(row=ri, column=4, value=cat)
-        ws.cell(row=ri, column=5, value=side)
-        ws.cell(row=ri, column=6, value=notes)
-        ws.cell(row=ri, column=7, value=max_fee)
-        ws.cell(row=ri, column=8, value=max_wage)
-        ws.cell(row=ri, column=9, value=src)
-        ws.cell(row=ri, column=10, value=val)
-        ws.cell(row=ri, column=11, value=val_by)
-        ws.cell(row=ri, column=12, value=linked)
-        ws.cell(row=ri, column=13, value=source_file)
+         val, val_by, linked, source_file, origin) = r
+        ws.cell(row=ri, column=1, value=dp.source_code(origin, src))
+        ws.cell(row=ri, column=2, value=club)
+        ws.cell(row=ri, column=3, value=lg)
+        ws.cell(row=ri, column=4, value=dlu)
+        ws.cell(row=ri, column=5, value=cat)
+        ws.cell(row=ri, column=6, value=side)
+        ws.cell(row=ri, column=7, value=notes)
+        ws.cell(row=ri, column=8, value=max_fee)
+        ws.cell(row=ri, column=9, value=max_wage)
+        ws.cell(row=ri, column=10, value=src)
+        ws.cell(row=ri, column=11, value=val)
+        ws.cell(row=ri, column=12, value=val_by)
+        ws.cell(row=ri, column=13, value=linked)
+        ws.cell(row=ri, column=14, value=source_file)
 
     for ri in range(2, len(rows) + 2):
-        ws.cell(row=ri, column=7).number_format = '"€"#,##0'
         ws.cell(row=ri, column=8).number_format = '"€"#,##0'
+        ws.cell(row=ri, column=9).number_format = '"€"#,##0'
 
     for ci, w in enumerate(SHEET7_WIDTHS, start=1):
         ws.column_dimensions[get_column_letter(ci)].width = w
     ws.freeze_panes = "A2"
     last_col = get_column_letter(len(SHEET7_HEADERS))
     ws.auto_filter.ref = f"A1:{last_col}{len(rows) + 1}"
+    _write_footnote(
+        ws,
+        "Src: W = workbook (curated request), M = maps inference (Market Movement "
+        "Maps rule output, not validated). Source / Validated are the export's raw "
+        "tags — maps-inference rows arrive tagged Intel / NO.",
+        after_row=len(rows) + 1,
+        col_span=len(SHEET7_HEADERS),
+    )
     return len(rows)
 
 
@@ -300,9 +345,10 @@ def main() -> None:
         n5 = write_demand_signal_sheet(wb, con)
         n6 = write_supply_signal_sheet(wb, con)
         n7 = write_demand_mirror_sheet(wb, con)
+        n_leagues, _ = _demand_coverage(con)
     wb.save(WORKBOOK_PATH)
     print(f"Saved {WORKBOOK_PATH.resolve()}")
-    print(f"  Sheet 5 '{SHEET5_NAME}'  — {n5} position buckets ({DEMAND_LEAGUES_COVERED}/{DEMAND_LEAGUES_TOTAL} leagues)")
+    print(f"  Sheet 5 '{SHEET5_NAME}'  — {n5} position buckets ({n_leagues}/{DEMAND_LEAGUES_TOTAL} leagues)")
     print(f"  Sheet 6 '{SHEET6_NAME}'  — {n6} position buckets (19/19 leagues)")
     print(f"  Sheet 7 '{SHEET7_NAME}'  — {n7} consolidated demand rows")
 

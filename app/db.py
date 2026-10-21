@@ -20,6 +20,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 import config       # noqa: E402
 import kill_list    # noqa: E402  — single source of truth, shared with scripts/23
+import demand_provenance  # noqa: E402  — W/M/Y badges + derived demand coverage
 
 CACHE_TTL = 60  # seconds
 
@@ -40,6 +41,24 @@ def get_connection() -> sqlite3.Connection:
 
 def _read_sql(sql: str, params: tuple = ()) -> pd.DataFrame:
     return pd.read_sql_query(sql, get_connection(), params=params)
+
+
+def _with_src(requests_df: pd.DataFrame) -> pd.DataFrame:
+    """Attach the W / M / Y provenance code (demand_provenance.source_code)."""
+    requests_df["src"] = [
+        demand_provenance.source_code(o if isinstance(o, str) else None, s)
+        for o, s in zip(requests_df["source_origin"], requests_df["source"])
+    ]
+    return requests_df
+
+
+# ─── Demand coverage (derived — replaces config.DEMAND_MAPPED_LEAGUES) ───────
+
+@st.cache_data(ttl=CACHE_TTL)
+def demand_mapped_leagues() -> tuple[str, ...]:
+    """Leagues with any map_club_requests row. Every demand display surface
+    filters buyers to this set; supply stays on the full 19-league universe."""
+    return demand_provenance.derive_demand_mapped_leagues(get_connection())
 
 
 # ─── Kill List (single source of truth, shared with scripts/23) ─────────────
@@ -381,6 +400,7 @@ _MATCHES_SQL = """
         m.wage_feasibility_label,
         m.request_source,
         m.request_validated,
+        m.request_source_origin,
         m.tier_move,
         m.player_wage_pw_eur,
         m.player_ca,
@@ -496,12 +516,13 @@ def get_club(club_id: int, sort_col: str = "match_score") -> dict:
         ORDER BY pu.sellability_score DESC
     """, (club_id,))
     requests_df = _read_sql("""
-        SELECT 'explicit' AS demand_layer, club_name, league, position_bucket,
-               preferred_side, max_transfer_fee_eur, max_wage_pw_eur, source, validated
+        SELECT CASE WHEN source_origin = 'inference' THEN 'inferred (maps)' ELSE 'explicit' END AS demand_layer,
+               club_name, league, position_bucket,
+               preferred_side, max_transfer_fee_eur, max_wage_pw_eur, source, validated, source_origin
         FROM map_club_requests WHERE club_id = ?
         UNION ALL
         SELECT 'inferred' AS demand_layer, club_name, league, position_bucket,
-               preferred_side, max_transfer_fee_eur, max_wage_pw_eur, source, validated
+               preferred_side, max_transfer_fee_eur, max_wage_pw_eur, source, validated, NULL AS source_origin
         FROM inferred_club_requests WHERE club_id = ?
     """, (club_id, club_id))
     buyer_matches_df = _read_sql(
@@ -512,7 +533,7 @@ def get_club(club_id: int, sort_col: str = "match_score") -> dict:
         "pressure":         pressure_df.iloc[0] if len(pressure_df) else None,
         "overview":         overview_df.iloc[0] if len(overview_df) else None,
         "sellable_here":    sellable_df,
-        "requests":         requests_df,
+        "requests":         _with_src(requests_df),
         "matches_as_buyer": buyer_matches_df,
     }
 
@@ -552,12 +573,13 @@ def get_position(bucket: str, sort_col: str = "match_score",
         ORDER BY pu.sellability_score DESC
     """, (bucket,))
     requests_df = _read_sql("""
-        SELECT 'explicit' AS demand_layer, club_name, league, preferred_side,
-               max_transfer_fee_eur, max_wage_pw_eur, source, validated
+        SELECT CASE WHEN source_origin = 'inference' THEN 'inferred (maps)' ELSE 'explicit' END AS demand_layer,
+               club_name, league, preferred_side,
+               max_transfer_fee_eur, max_wage_pw_eur, source, validated, source_origin
         FROM map_club_requests WHERE position_bucket = ?
         UNION ALL
         SELECT 'inferred' AS demand_layer, club_name, league, preferred_side,
-               max_transfer_fee_eur, max_wage_pw_eur, source, validated
+               max_transfer_fee_eur, max_wage_pw_eur, source, validated, NULL AS source_origin
         FROM inferred_club_requests WHERE position_bucket = ?
         ORDER BY max_transfer_fee_eur DESC
     """, (bucket, bucket))
@@ -567,7 +589,7 @@ def get_position(bucket: str, sort_col: str = "match_score",
     )
     return {
         "players":  players_df,
-        "requests": requests_df,
+        "requests": _with_src(requests_df),
         "matches":  matches_df,
     }
 
@@ -606,12 +628,13 @@ def get_league(league_code: str, sort_col: str = "match_score",
         ORDER BY pu.sellability_score DESC
     """, (league_code,))
     requests_df = _read_sql("""
-        SELECT 'explicit' AS demand_layer, club_name, position_bucket, preferred_side,
-               max_transfer_fee_eur, max_wage_pw_eur, source, validated
+        SELECT CASE WHEN source_origin = 'inference' THEN 'inferred (maps)' ELSE 'explicit' END AS demand_layer,
+               club_name, position_bucket, preferred_side,
+               max_transfer_fee_eur, max_wage_pw_eur, source, validated, source_origin
         FROM map_club_requests WHERE league = ?
         UNION ALL
         SELECT 'inferred' AS demand_layer, club_name, position_bucket, preferred_side,
-               max_transfer_fee_eur, max_wage_pw_eur, source, validated
+               max_transfer_fee_eur, max_wage_pw_eur, source, validated, NULL AS source_origin
         FROM inferred_club_requests WHERE league = ?
         ORDER BY max_transfer_fee_eur DESC
     """, (league_code, league_code))
@@ -624,6 +647,6 @@ def get_league(league_code: str, sort_col: str = "match_score",
     )
     return {
         "sellers":  sellers_df,
-        "requests": requests_df,
+        "requests": _with_src(requests_df),
         "matches":  matches_df,
     }

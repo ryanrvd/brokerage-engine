@@ -2,7 +2,7 @@
 Step 28 — Ingest full club squads (kader + loans-out) for every demand-mapped
 league via Safari-exported TM session cookie.
 
-Coverage: the 10 demand-mapped leagues in config.DEMAND_MAPPED_LEAGUES (PL +
+Coverage: the 10 leagues in config.SQUAD_SCRAPE_LEAGUES (PL +
 Championship + La Liga + Serie A + Ligue 1 + Ligue 2 + Bundesliga + Primeira
 Liga + Eredivisie + Belgian Pro League). ~172 clubs total. Two TM pages per
 club:
@@ -57,9 +57,9 @@ CACHE_MAX_AGE_HOURS = 24
 
 # All demand-mapped leagues get kader + loans-out scrape. PL stays first so a
 # fresh cookie test exercises the historically-cached path.
-TARGET_LEAGUES = list(config.DEMAND_MAPPED_LEAGUES)
+TARGET_LEAGUES = list(config.SQUAD_SCRAPE_LEAGUES)
 
-# Supply-only second tiers not in DEMAND_MAPPED_LEAGUES. Included when
+# Supply-only second tiers not in SQUAD_SCRAPE_LEAGUES. Included when
 # --include-extended-supply is passed, so promoted ES2/IT2/L2 clubs
 # (Monza, Schalke, etc.) have their current squads in player_universe.
 EXTENDED_SUPPLY_LEAGUES = ["ES2", "IT2", "L2"]

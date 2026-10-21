@@ -33,6 +33,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 import config
 import kill_list       # shared with app/db.py
+import demand_provenance  # W / M / Y demand-source labels, shared with the app
 import club_display    # club name → display
 import player_display  # player name → display
 
@@ -69,18 +70,10 @@ WIDTHS = [
 SCISPORTS_COL_INDICES = {11, 12, 13, 22, 23, 24}
 
 
-def demand_intensity_label(source: str | None, validated: str | None) -> str:
-    src = (source or "").strip()
-    val = (validated or "").strip().upper()
-    if src == "Agent" and val == "YES":
-        return "Validated agent"
-    if src == "Agent":
-        return "Agent (partial)"
-    if src == "Intel":
-        return "Intel-derived"
-    if src == "Inferred":
-        return "Inferred (squad gap)"
-    return "Unverified"
+def demand_intensity_label(source: str | None, validated: str | None,
+                           source_origin: str | None = None) -> str:
+    """W / M / Y badge-prefixed label — shared with the app via demand_provenance."""
+    return demand_provenance.demand_label(source, validated, source_origin)
 
 
 def contract_years_remaining(contract_end: str | None, snapshot: date) -> float | None:
@@ -131,12 +124,14 @@ def build_rationale(seller: dict, buyer: dict, tier_move: str, headroom_eur: int
     buyer_id = buyer.get("buyer_club_id")
     buyer_display = (display_map or {}).get(int(buyer_id), buyer["buyer_club_name"]) if buyer_id is not None else buyer["buyer_club_name"]
     buyer_lg = config.LEAGUE_DISPLAY.get(buyer["buyer_league_id"], buyer["buyer_league_id"])
-    if src == "Agent" and val == "YES":
+    if buyer.get("request_source_origin") == "inference":
+        buyer_text = f"{buyer_display} ({buyer_lg}) — maps-inferred positional gap"
+    elif src == "Agent" and val == "YES":
         buyer_text = f"{buyer_display} ({buyer_lg}) — validated agent-confirmed need"
     elif src == "Intel":
         buyer_text = f"{buyer_display} ({buyer_lg}) — intel-derived positional gap"
     elif src == "Inferred":
-        buyer_text = f"{buyer_display} ({buyer_lg}) — inferred positional gap (squad-thinness)"
+        buyer_text = f"{buyer_display} ({buyer_lg}) — matcher-inferred positional gap (squad-thinness)"
     else:
         buyer_text = f"{buyer_display} ({buyer_lg}) — open need (unverified)"
 
@@ -157,7 +152,7 @@ def fetch_match_rows(con: sqlite3.Connection) -> list[dict]:
     """
     sql = """
         SELECT m.match_score, m.sellability_score, m.budget_fit,
-               m.request_source, m.request_validated,
+               m.request_source, m.request_validated, m.request_source_origin,
                m.buyer_club_id, m.buyer_club_name, m.buyer_league_id,
                m.max_transfer_fee_eur, m.max_wage_pw_eur, m.tier_move,
                m.player_ca, m.player_pa,
@@ -231,6 +226,7 @@ def _write_rows(ws, rows: list[dict], snapshot: date,
             buyer={
                 "request_source":    r["request_source"],
                 "request_validated": r["request_validated"],
+                "request_source_origin": r["request_source_origin"],
                 "buyer_club_name":   r["buyer_club_name"],
                 "buyer_club_id":     r.get("buyer_club_id"),
                 "buyer_league_id":   r["buyer_league_id"],
@@ -274,7 +270,8 @@ def _write_rows(ws, rows: list[dict], snapshot: date,
         c = ws.cell(row=ri, column=17, value=r["max_wage_pw_eur"]);      c.number_format = money
         c = ws.cell(row=ri, column=18, value=r["match_score"]);          c.number_format = "0.0"
         c = ws.cell(row=ri, column=19, value=r["sellability_score"]);    c.number_format = "0.0"
-        ws.cell(row=ri, column=20, value=demand_intensity_label(r["request_source"], r["request_validated"]))
+        ws.cell(row=ri, column=20, value=demand_intensity_label(r["request_source"], r["request_validated"],
+                                                                r["request_source_origin"]))
         c = ws.cell(row=ri, column=21, value=budget_fit_pct);            c.number_format = pct
         ws.cell(row=ri, column=22, value=r.get("level_fit"))
         c = ws.cell(row=ri, column=23, value=_ca);                       c.number_format = "0.0"

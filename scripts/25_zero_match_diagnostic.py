@@ -42,7 +42,9 @@ MATCH_SCORE_FLOOR = 10.0
 LOW_SELLABILITY_THRESHOLD = 30.0
 
 
-def demand_intensity(source, validated):
+def demand_intensity(source, validated, source_origin=None):
+    if source_origin == "inference":   # maps-side inference (16b) — see script 22
+        return 0.40
     src = (source or "").strip()
     val = (validated or "").strip().upper()
     if src == "Agent" and val == "YES":
@@ -91,9 +93,9 @@ def budget_fit_curve(indicative_fee, buyer_max_fee):
     return 0.80 * (buyer_max_fee - config.MIN_BROKERAGE_FEE) / span
 
 
-def score_pair(player_tm, sellability, buyer_max_fee, source, validated):
+def score_pair(player_tm, sellability, buyer_max_fee, source, validated, source_origin=None):
     sell_term = (sellability or 0.0) / 100.0
-    di = demand_intensity(source, validated)
+    di = demand_intensity(source, validated, source_origin)
     indicative_fee = player_tm * config.tm_to_fee_multiplier(player_tm)
     bf = budget_fit_curve(indicative_fee, float(buyer_max_fee))
     raw = sell_term * di * bf * WAGE_FEASIBILITY
@@ -112,12 +114,12 @@ def diagnose_player(con, player) -> dict:
 
     candidates = list(con.execute("""
         SELECT request_id, club_id, club_name, league, position_bucket, preferred_side,
-               max_transfer_fee_eur, source, validated
+               max_transfer_fee_eur, source, validated, source_origin
         FROM map_club_requests
         WHERE position_bucket = ? AND max_transfer_fee_eur IS NOT NULL
         UNION ALL
         SELECT request_id, club_id, club_name, league, position_bucket, preferred_side,
-               max_transfer_fee_eur, source, validated
+               max_transfer_fee_eur, source, validated, NULL AS source_origin
         FROM inferred_club_requests
         WHERE position_bucket = ? AND max_transfer_fee_eur IS NOT NULL
     """, (bucket, bucket)))
@@ -208,12 +210,12 @@ def diagnose_player(con, player) -> dict:
     best_buyer = after_tier_by_budget[0]
     best_score, best_bf, best_di, _ = score_pair(
         player_tm, sell, best_buyer["max_transfer_fee_eur"],
-        best_buyer["source"], best_buyer["validated"],
+        best_buyer["source"], best_buyer["validated"], best_buyer["source_origin"],
     )
     indicative_fee = player_tm * config.tm_to_fee_multiplier(player_tm)
     for c in after_tier[1:]:
         score, bf, di, _ = score_pair(player_tm, sell, c["max_transfer_fee_eur"],
-                                       c["source"], c["validated"])
+                                       c["source"], c["validated"], c["source_origin"])
         if score > best_score:
             best_score = score
             best_buyer = c

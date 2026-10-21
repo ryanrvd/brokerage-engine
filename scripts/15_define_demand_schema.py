@@ -91,6 +91,7 @@ CREATE TABLE map_club_requests (
     validated                   TEXT,      -- 'YES' / 'NO' (and one stray 'Jouko' preserved verbatim)
     validated_by                TEXT,
     linked_shortlisted_player   TEXT,
+    source_origin               TEXT,      -- maps export origin: 'workbook' (curated) / 'inference' (maps rules)
     workbook_source             TEXT NOT NULL,  -- 'manual_workbook' (kept separate from 'source' to avoid clash)
     source_file                 TEXT,
     snapshot_date               DATE NOT NULL

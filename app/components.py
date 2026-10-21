@@ -20,6 +20,7 @@ import sys as _sys
 from pathlib import Path as _Path
 _sys.path.insert(0, str(_Path(__file__).resolve().parent.parent))
 from kill_list import normalise_name as _normalise_name  # noqa: E402
+import demand_provenance as _dp  # noqa: E402  — W/M/Y demand-source badges
 
 
 # ─── Format helpers ───────────────────────────────────────────────────────────
@@ -73,18 +74,36 @@ def contract_years_remaining(ce: str | None, snapshot: date) -> float | None:
         return None
 
 
-def demand_intensity_label(src: str | None, val: str | None) -> str:
-    src = (src or "").strip()
-    val = (val or "").strip().upper()
-    if src == "Agent" and val == "YES":
-        return "Validated agent"
-    if src == "Agent":
-        return "Agent (partial)"
-    if src == "Intel":
-        return "Intel-derived"
-    if src == "Inferred":
-        return "Inferred (squad gap)"
-    return "Unverified"
+def demand_intensity_label(src: str | None, val: str | None,
+                           origin: str | None = None) -> str:
+    """Badge-prefixed demand label ('M · Maps inference'). See demand_provenance."""
+    return _dp.demand_label(src, val, origin)
+
+
+def demand_source_badge(code: str) -> str:
+    """Inline W / M / Y pill with a hover tooltip spelling out the provenance."""
+    bg, fg = _dp.SOURCE_COLOURS.get(code, _dp.SOURCE_COLOURS[_dp.UNKNOWN])
+    tip = _dp.SOURCE_DESCRIPTIONS.get(code, _dp.SOURCE_DESCRIPTIONS[_dp.UNKNOWN])
+    return (
+        f'<span class="rvc-src-badge" title="{tip}" style="background:{bg}; color:{fg}; '
+        f'font-weight:700; font-size:0.72rem; padding:1px 6px; border-radius:4px; '
+        f'letter-spacing:0.02em;">{code}</span>'
+    )
+
+
+def demand_source_badge_for_row(row) -> str:
+    """Badge for a match row (request_source_origin / request_source) or a demand
+    row (source_origin / source)."""
+    origin = row.get("request_source_origin", row.get("source_origin"))
+    source = row.get("request_source", row.get("source"))
+    origin = None if origin is None or (isinstance(origin, float) and pd.isna(origin)) else origin
+    return demand_source_badge(_dp.source_code(origin, source))
+
+
+def demand_count_line(codes) -> str:
+    """'0 W · 2 M · 2 Y' with each letter rendered as its badge."""
+    counts = _dp.count_codes(codes)
+    return " · ".join(f"{counts.get(c, 0)} {demand_source_badge(c)}" for c in _dp.SOURCE_CODES)
 
 
 def current_club_display(row: pd.Series) -> str:
@@ -129,12 +148,14 @@ def _buyer_text(row: pd.Series) -> str:
 
     src = (row.get("request_source") or "").strip()
     val = (row.get("request_validated") or "").strip().upper()
+    if row.get("request_source_origin") == "inference":
+        return f"{buyer} — maps-inferred positional gap"
     if src == "Agent" and val == "YES":
         return f"{buyer} — validated agent-confirmed need"
     if src == "Intel":
         return f"{buyer} — intel-derived positional gap"
     if src == "Inferred":
-        return f"{buyer} — inferred positional gap (squad-thinness)"
+        return f"{buyer} — matcher-inferred positional gap (squad-thinness)"
     return f"{buyer} — open need (unverified)"
 
 
@@ -238,7 +259,7 @@ def build_methodology(row: pd.Series, score_col: str = "market_match_score") -> 
 
     if score_col == "match_score":
         # Brokerage formula: sell × demand_intensity × budget_fit × wage × level_fit_mult.
-        # demand_intensity (Agent=1.0, Intel=0.6, Inferred=0.4) is the Brokerage
+        # demand_intensity (Agent=1.0, Intel=0.6, Inferred/maps-inferred=0.4) is the Brokerage
         # demand scale; demand_term_mult is Market View's parallel (0.75 for Intel).
         demand_brok = row.get("demand_intensity")
         lvl_m_brok = row.get("level_fit_multiplier")

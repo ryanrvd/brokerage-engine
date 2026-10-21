@@ -115,9 +115,9 @@ The contract cutoff is **end-of-season-aware** (via `config.end_of_season_plus`)
 The matcher reads the maps repo's versioned export rather than 8 hand-copied workbooks. `scripts/16b_load_maps_exports.py`:
 
 1. **Resolves the export path** — `~/market-movement-maps/exports/latest/` by default, `MAPS_EXPORTS_PATH` to override. Fails loudly if the path or `_manifest.json` is missing.
-2. **Validates the manifest contract** (hard-fail unless noted): `schema_version` major must equal `SUPPORTED_SCHEMA_MAJOR` (1 today — a major bump means the loader needs updating); `club_request.validated_by` must NOT be redacted (if it is, regenerate the maps export with `MMM_LOCAL_MODE=1`); `calibration_agreement_pct` must sit in [50, 80]; `resolution_violations` non-empty → warn per league and continue.
+2. **Validates the manifest contract** (hard-fail unless noted): `schema_version` major must equal `SUPPORTED_SCHEMA_MAJOR` (1 today — a major bump means the loader needs updating); `club_request.validated_by` must NOT be redacted **when the export carries workbook-origin requests** (if it is, regenerate the maps export with `MMM_LOCAL_MODE=1`; an inference-only export with the redaction just warns, since inference rows carry no validator); `calibration_agreement_pct` must sit in [40, 80], and a score in [40, 50) **warns and proceeds** — below 50 means the maps' inference rules disagree with workbook judgments on more than half the measured cells (a weak but real calibration, e.g. 48.3 on the 2026-10-18 export, not a broken run); `resolution_violations` non-empty → warn per league and continue.
 3. **Joins on `tm_club_id`** — the export's `club.json` carries the Transfermarkt id for every club, so the old in-league + cross-league name-matcher is gone (retired with `scripts/16_load_market_maps.py`). The matcher's `map_*.club_id` = the export's `tm_club_id`.
-4. **Populates the four `map_*` tables**: `club_overview.json → map_club_overview`, `club_requests.json → map_club_requests` (only `source_origin='workbook'` rows — the export's inference rows are ignored because the matcher runs its own inference via script 21), `club_tracker.json → map_club_tracker`. `map_demand_signal` is **derived** from the loaded requests (the export's `live_demand_signal` is a per-club ranked list with an incompatible shape).
+4. **Populates the four `map_*` tables**: `club_overview.json → map_club_overview`, `club_requests.json → map_club_requests` (both `source_origin='workbook'` and `'inference'` rows, with `source_origin` persisted as a column — post-MMM-migration all open demand is inference: 1,887/1,887 on the 2026-10-18 export, 914 of them at matcher-universe clubs. No double-up with script 21, which skips any (club, bucket) already in `map_club_requests`), `club_tracker.json → map_club_tracker`. `map_demand_signal` is **derived** from the loaded requests (the export's `live_demand_signal` is a per-club ranked list with an incompatible shape).
 
 **Two transforms to know about:** (a) **Budget** — the export's `club_request` no longer carries per-request fee/wage caps, so the loader joins `club_overview.workbook_highest_transfer_fee_eur` + `max_salary_pw_eur` onto each request by club (these matched the old per-request values for 184/185 clubs). `club_budget_derived` carries a newer multiplier-adjusted figure — a future enhancement, not used yet. (b) **Position vocab** — the export's canonical 10 use `CF`; the matcher uses `ST_CF`. The loader maps `CF → ST_CF`; every other code is identical.
 
@@ -264,12 +264,27 @@ The €15m floor came from Ryan's Day 5 framing: clubs that can stretch budgets 
 
 | Source | Built by | Demand-intensity weight | Rationale |
 |---|---|---|---|
-| `map_club_requests` (explicit) | `scripts/16b_load_maps_exports.py` from the maps export interface | 1.00 (Agent/YES), 0.85 (Agent/other), 0.60 (Intel/NO), 0.50 (NULL/NULL) | High-signal — agent or intel verified |
+| `map_club_requests` (`source_origin='workbook'`) | `scripts/16b_load_maps_exports.py` from the maps export interface | 1.00 (Agent/YES), 0.85 (Agent/other), 0.60 (Intel/NO), 0.50 (NULL/NULL) | High-signal — agent or intel verified |
+| `map_club_requests` (`source_origin='inference'`) | `scripts/16b_load_maps_exports.py` — maps-side rule output | 0.40 (Market View demand term 0.5), keyed on `source_origin` because these rows arrive tagged `Intel/NO` | Lower-signal — maps inference rules (squad thinness, loan-no-buy, recent outbound); persisted on `matches.request_source_origin` |
 | `inferred_club_requests` (synthetic) | `scripts/21_infer_demand.py` from `senior_roster` thinness | 0.40 | Lower-signal — derived from squad-gap heuristic |
 
 Inferred demand fires for a (club, bucket) pair when active headcount ≤ a "thin" threshold (GK ≤1, CB ≤2, LB ≤1, RB ≤1, CM ≤2, LW ≤1, RW ≤1, ST_CF ≤2 — DM/AM skipped because they're formation-dependent). Budget proxy uses `map_club_overview.highest_transfer_fee_2526_eur` for mapped clubs (so PSV/Ajax/Benfica/Sporting/Porto/Braga get their real spending power) and a conservative tier default for unmapped clubs (Tier A €25m, Tier B €5m, Tier C €3m, Tier D €15m). Inferred is suppressed where explicit demand for the same (club, bucket) already exists.
 
 This lifts buyer-side coverage from 10 demand-mapped leagues to all 19, and from 196 buyer clubs to 370. Clubs without genuine spending power (most of NL/POR/BEL below the top 3-4) self-filter via budget_fit → 0 → match_score → 0 → cut by the score floor.
+
+### Demand provenance badges (W / M / Y)
+
+Every demand row the app and workbooks surface carries a one-letter source badge, defined once in `demand_provenance.py` (shared by `app/components.py`, `app/db.py`, scripts 17 and 23):
+
+| Code | Layer | Where it comes from |
+|---|---|---|
+| **W** | Workbook | `map_club_requests`, `source_origin='workbook'`: curated MMM workbook requests |
+| **M** | Maps inference | `map_club_requests`, `source_origin='inference'`: MMM rule output (arrives tagged `Intel/NO`) |
+| **Y** | Matcher inference | `inferred_club_requests`, `source='Inferred'`: this repo's `scripts/21_infer_demand.py` |
+
+Labels read `M · Maps inference`, `Y · Matcher inference (squad gap)`, `W · Validated agent` and so on. Sheet 5 has W / M / Y count columns. Y is shown for reference and is not in the W+M total, so script 21 runs **before** 17. Sheet 7 leads with a `Src` column. Pages show "n W · n M · n Y" count lines.
+
+**Demand coverage is derived, not hard-coded.** `config.DEMAND_MAPPED_LEAGUES` is gone. The demand-side league set is `demand_provenance.derive_demand_mapped_leagues()`, exposed to the app as `db.demand_mapped_leagues()`: leagues with at least one `map_club_requests` row (18/19 on the 2026-10-18 export, no SA1). The supply-side squad scrape list that script 28 used to borrow from it is now the fixed `config.SQUAD_SCRAPE_LEAGUES` (the original 10 leagues), so supply scraping doesn't grow silently with demand coverage.
 
 **Score floor:** `match_score >= 10` is required for a (player, buyer) pair to enter the `matches` table. Suppresses the long tail of "clears the four filters but tactically marginal" candidates (e.g. Kalimuendo→Arsenal at 5.5 before the multiplier re-cal — now around 13-17, which is acceptable mid-tier).
 
@@ -543,6 +558,7 @@ After a code change or fresh dcaribou snapshot:
 .venv/bin/python scripts/15_define_demand_schema.py
 .venv/bin/python scripts/16b_load_maps_exports.py        # Phase 6: load maps export interface (was 16_load_market_maps.py)
 .venv/bin/python scripts/19_apply_league_overrides.py    # post-16b: corrects map_* league tags (export carries 25/26 leagues)
+.venv/bin/python scripts/21_infer_demand.py              # matcher-side roster-thinness inference (skips cells already in map_club_requests); before 17 so Sheet 5's Y column is current
 .venv/bin/python scripts/17_export_demand_sheets.py
 .venv/bin/python scripts/18_manual_flags_excel.py        # refreshes manual_flags.xlsx from updated club_pressure
 .venv/bin/python scripts/reconcile_scisports.py          # refreshes data/scisports_ratings.xlsx against new cohort

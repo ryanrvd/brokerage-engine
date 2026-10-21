@@ -30,6 +30,9 @@ from pathlib import Path as _Path
 _sys.path.insert(0, str(_Path(__file__).resolve().parent.parent.parent))
 import config
 
+# Derived from map_club_requests (was the hard-coded config.DEMAND_MAPPED_LEAGUES).
+DEMAND_MAPPED_LEAGUES = db.demand_mapped_leagues()
+
 st.set_page_config(page_title="Brokerage Engine", page_icon="👤", layout="wide")
 ui.inject_css()
 ui.render_page_accent()
@@ -277,7 +280,7 @@ matches = data["matches"]
 # Demand-side restriction: drop matches whose buyer is in a league we don't
 # trust as demand signal. Keeps the per-player matches table consistent with
 # Targets / All Matches / Position View.
-matches = matches[matches["buyer_league_id"].isin(config.DEMAND_MAPPED_LEAGUES)].reset_index(drop=True)
+matches = matches[matches["buyer_league_id"].isin(DEMAND_MAPPED_LEAGUES)].reset_index(drop=True)
 excluded = data["excluded"]
 snapshot = db.get_snapshot_date()
 
@@ -757,7 +760,8 @@ else:
     )
     matches_df["buyer_league_display"] = matches_df["buyer_league_id"].apply(labels.league_name)
     matches_df["demand_label"] = matches_df.apply(
-        lambda r: ui.demand_intensity_label(r["request_source"], r["request_validated"]),
+        lambda r: ui.demand_intensity_label(r["request_source"], r["request_validated"],
+                                            r.get("request_source_origin")),
         axis=1,
     )
     matches_df["budget_fit_pct"] = (matches_df["budget_fit"] * 100).round(1)
@@ -782,7 +786,8 @@ else:
 
     # Pre-build clickable Buyer cells
     table_df["Buyer_html"] = table_df.apply(
-        lambda r: ui.club_link(int(r["buyer_club_id"]), str(r["buyer_display"])),
+        lambda r: ui.demand_source_badge_for_row(r) + " "
+                  + ui.club_link(int(r["buyer_club_id"]), str(r["buyer_display"])),
         axis=1,
     )
 

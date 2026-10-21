@@ -17,11 +17,14 @@ import db
 import components as ui
 import labels
 
-# config.DEMAND_MAPPED_LEAGUES — buyer-side restriction applied below.
+# DEMAND_MAPPED_LEAGUES — buyer-side restriction applied below.
 import sys as _sys
 from pathlib import Path as _Path
 _sys.path.insert(0, str(_Path(__file__).resolve().parent.parent.parent))
 import config
+
+# Derived from map_club_requests (was the hard-coded config.DEMAND_MAPPED_LEAGUES).
+DEMAND_MAPPED_LEAGUES = db.demand_mapped_leagues()
 
 st.set_page_config(
     page_title="Brokerage Engine",
@@ -48,7 +51,7 @@ _SCORE_COL = db.active_match_score_col()
 # Demand-side restriction: only show matches whose buyer is in one of the
 # 10 leagues we trust for demand signal. Non-mapped leagues (MLS, Saudi,
 # Turkish, Greek, Scottish, Danish, non-FR second tiers) are dropped here.
-df = df[df["buyer_league_id"].isin(config.DEMAND_MAPPED_LEAGUES)].reset_index(drop=True)
+df = df[df["buyer_league_id"].isin(DEMAND_MAPPED_LEAGUES)].reset_index(drop=True)
 snapshot = db.get_snapshot_date()
 
 df["contract_years_remaining"] = df["contract_end_date"].apply(
@@ -374,7 +377,8 @@ filtered["ParentClub_html"] = filtered.apply(
     axis=1,
 )
 filtered["Buyer_html"] = filtered.apply(
-    lambda r: ui.club_link(int(r["buyer_club_id"]), str(r["buyer_club_display"])),
+    lambda r: ui.demand_source_badge_for_row(r) + " "
+              + ui.club_link(int(r["buyer_club_id"]), str(r["buyer_club_display"])),
     axis=1,
 )
 filtered["other_buyers_pill"] = filtered["other_buyers_count"].apply(

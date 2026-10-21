@@ -2,8 +2,9 @@
 
 Covers:
   * manifest schema_version validation (accept matching major; reject a major bump)
-  * redaction check (accept un-redacted; reject club_request.validated_by redacted)
-  * calibration sanity band (reject out-of-band)
+  * redaction check (reject validated_by redacted only when workbook rows exist)
+  * calibration sanity band (reject out-of-band; warn-and-proceed in [40, 50))
+  * both source_origins ('workbook' + 'inference') loaded, origin persisted
   * per-table read into the four map_* tables from a mock export directory
   * tm_club_id direct-join replaces the old cross-league name matcher
 
@@ -61,17 +62,38 @@ def test_redaction_absent_accepted():
     loader.validate_manifest(_base_manifest(redactions_applied=[]))
 
 
-def test_redaction_validated_by_rejected():
+_REDACTED = _base_manifest(redactions_applied=["club_request.validated_by"])
+
+
+def test_redaction_validated_by_rejected_with_workbook_rows():
     with pytest.raises(SystemExit):
-        loader.validate_manifest(
-            _base_manifest(redactions_applied=["club_request.validated_by"]))
+        loader.check_validated_by_redaction(
+            _REDACTED, [{"source_origin": "workbook"}, {"source_origin": "inference"}])
+
+
+def test_redaction_validated_by_warns_when_inference_only(capsys):
+    # Inference rows carry no validator — redaction loses nothing, so continue.
+    loader.check_validated_by_redaction(_REDACTED, [{"source_origin": "inference"}] * 3)
+    assert "redacted" in capsys.readouterr().out
 
 
 def test_calibration_out_of_band_rejected():
-    with pytest.raises(SystemExit):
-        loader.validate_manifest(_base_manifest(calibration_agreement_pct=12.0))
-    with pytest.raises(SystemExit):
-        loader.validate_manifest(_base_manifest(calibration_agreement_pct=None))
+    for bad in (12.0, 39.9, 80.1, None):
+        with pytest.raises(SystemExit):
+            loader.validate_manifest(_base_manifest(calibration_agreement_pct=bad))
+
+
+def test_calibration_below_50_warns_and_proceeds(capsys):
+    # 48.3 is the real 2026-10-18 MMM calibration — must load, with a warning.
+    loader.validate_manifest(_base_manifest(calibration_agreement_pct=48.3))
+    assert "more than half the measured cells" in capsys.readouterr().out
+    loader.validate_manifest(_base_manifest(calibration_agreement_pct=40.0))   # inclusive edge
+
+
+def test_calibration_50_and_above_no_warning(capsys):
+    loader.validate_manifest(_base_manifest(calibration_agreement_pct=50.0))
+    loader.validate_manifest(_base_manifest(calibration_agreement_pct=80.0))
+    assert "WARNING" not in capsys.readouterr().out
 
 
 def test_resolution_violations_warn_only(capsys):
@@ -136,11 +158,22 @@ def _write_export(dirpath: Path) -> None:
          "linked_shortlisted_players": None, "date_last_updated": "02/04/2026",
          "workbook_position_category": "Centre Forward", "workbook_preferred_side": None,
          "source_origin": "workbook"},
-        # inference-origin request — must be SKIPPED (matcher runs its own inference)
+        # inference-origin request — must LOAD with source_origin='inference'
         {"club_id": 1, "position": "CB", "source": "Intel", "validated": "NO",
          "validated_by": None, "role_notes": None, "linked_shortlisted_players": None,
          "date_last_updated": None, "workbook_position_category": "Centre Back",
          "workbook_preferred_side": "Left", "source_origin": "inference"},
+        # inference row for the SAME cell as the club-1 CF workbook request (same
+        # source/validated/side) — must stay a separate row, not collapse into it.
+        {"club_id": 1, "position": "CF", "source": "Agent", "validated": "YES",
+         "validated_by": None, "role_notes": None, "linked_shortlisted_players": None,
+         "date_last_updated": None, "workbook_position_category": "Centre Forward",
+         "workbook_preferred_side": None, "source_origin": "inference"},
+        # unknown origin — skipped
+        {"club_id": 2, "position": "CB", "source": "Intel", "validated": "NO",
+         "validated_by": None, "role_notes": None, "linked_shortlisted_players": None,
+         "date_last_updated": None, "workbook_position_category": "Centre Back",
+         "workbook_preferred_side": None, "source_origin": "something_else"},
         # workbook request for club 2 (absent from club_budget_derived) — budget
         # must fall back to the workbook fee (8m).
         {"club_id": 2, "position": "GK", "source": "Agent", "validated": "NO",
@@ -196,8 +229,22 @@ def test_per_table_read_populates_all_four(tmp_path, monkeypatch):
     n_ds = con.execute("SELECT COUNT(*) FROM map_demand_signal").fetchone()[0]
     assert n_ov == 2          # Alpha + Beta; NL2 club skipped
     assert n_tr == 2          # both Alpha tracker rows
-    assert n_rq == 2          # club1 ST_CF (dup collapsed) + club2 GK; inference + NL2 skipped
-    assert n_ds == 2          # derived: (GB1, ST_CF) and (GB1, GK)
+    # club1 ST_CF workbook (dup collapsed) + club1 ST_CF inference + club1 CB inference
+    # + club2 GK workbook; NL2 + unknown-origin skipped
+    assert n_rq == 4
+    assert n_ds == 3          # derived: (GB1, ST_CF), (GB1, GK), (GB1, CB)
+
+
+def test_source_origin_persisted(tmp_path, monkeypatch):
+    con = _run_loader(tmp_path, monkeypatch)
+    rows = sorted(con.execute(
+        "SELECT club_id, position_bucket, source_origin FROM map_club_requests").fetchall())
+    assert rows == [
+        ("100", "CB", "inference"),
+        ("100", "ST_CF", "inference"),
+        ("100", "ST_CF", "workbook"),
+        ("200", "GK", "workbook"),
+    ]
 
 
 def test_request_dedup_keeps_richest(tmp_path, monkeypatch):
@@ -205,7 +252,7 @@ def test_request_dedup_keeps_richest(tmp_path, monkeypatch):
     con = _run_loader(tmp_path, monkeypatch)
     rows = con.execute(
         "SELECT validated_by, role_notes FROM map_club_requests "
-        "WHERE position_bucket='ST_CF'").fetchall()
+        "WHERE position_bucket='ST_CF' AND source_origin='workbook'").fetchall()
     assert len(rows) == 1
     assert rows[0][0] == "Jane Agent"     # richer row won over the bare duplicate
     assert rows[0][1] == "needs a 9"
@@ -219,7 +266,7 @@ def test_tm_club_id_direct_join(tmp_path, monkeypatch):
     req = con.execute(
         "SELECT club_id, league, position_bucket, max_transfer_fee_eur, "
         "max_wage_pw_eur, validated_by FROM map_club_requests "
-        "WHERE position_bucket='ST_CF'").fetchone()
+        "WHERE position_bucket='ST_CF' AND source_origin='workbook'").fetchone()
     assert req[0] == "100"                     # joined via club.json tm_club_id
     assert req[1] == "GB1"                     # league via league.json dcaribou_code
     assert req[2] == "ST_CF"                   # CF → ST_CF
