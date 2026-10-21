@@ -33,6 +33,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 import config
 import kill_list       # shared with app/db.py
+import demand_provenance  # W / M / Y demand-source labels, shared with the app
 import club_display    # club name → display
 import player_display  # player name → display
 
@@ -71,19 +72,8 @@ SCISPORTS_COL_INDICES = {11, 12, 13, 22, 23, 24}
 
 def demand_intensity_label(source: str | None, validated: str | None,
                            source_origin: str | None = None) -> str:
-    if source_origin == "inference":
-        return "Inferred (maps)"
-    src = (source or "").strip()
-    val = (validated or "").strip().upper()
-    if src == "Agent" and val == "YES":
-        return "Validated agent"
-    if src == "Agent":
-        return "Agent (partial)"
-    if src == "Intel":
-        return "Intel-derived"
-    if src == "Inferred":
-        return "Inferred (squad gap)"
-    return "Unverified"
+    """W / M / Y badge-prefixed label — shared with the app via demand_provenance."""
+    return demand_provenance.demand_label(source, validated, source_origin)
 
 
 def contract_years_remaining(contract_end: str | None, snapshot: date) -> float | None:
@@ -141,7 +131,7 @@ def build_rationale(seller: dict, buyer: dict, tier_move: str, headroom_eur: int
     elif src == "Intel":
         buyer_text = f"{buyer_display} ({buyer_lg}) — intel-derived positional gap"
     elif src == "Inferred":
-        buyer_text = f"{buyer_display} ({buyer_lg}) — inferred positional gap (squad-thinness)"
+        buyer_text = f"{buyer_display} ({buyer_lg}) — matcher-inferred positional gap (squad-thinness)"
     else:
         buyer_text = f"{buyer_display} ({buyer_lg}) — open need (unverified)"
 

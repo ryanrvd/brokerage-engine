@@ -22,11 +22,14 @@ import db
 import labels
 import components as ui
 
-# config — for SNAPSHOT_DATE + DEMAND_MAPPED_LEAGUES.
+# config — for SNAPSHOT_DATE.
 import sys as _sys
 from pathlib import Path as _Path
 _sys.path.insert(0, str(_Path(__file__).resolve().parent.parent.parent))
 import config
+
+# Derived from map_club_requests (was the hard-coded config.DEMAND_MAPPED_LEAGUES).
+DEMAND_MAPPED_LEAGUES = db.demand_mapped_leagues()
 
 st.set_page_config(
     page_title="Brokerage Engine",
@@ -45,7 +48,7 @@ ui.render_global_search(db.get_player_search_options(), db.get_club_search_optio
 con = db.get_connection()
 snapshot = db.get_snapshot_date()
 n_leagues_total = con.execute("SELECT COUNT(DISTINCT league_id) FROM club_pressure").fetchone()[0]
-n_demand_mapped = len(config.DEMAND_MAPPED_LEAGUES)
+n_demand_mapped = len(DEMAND_MAPPED_LEAGUES)
 
 st.markdown(
     f'<div class="rvc-page-title"><h1>Market overview</h1>'
@@ -60,7 +63,7 @@ st.markdown(
 excluded_ids = db.get_excluded_ids()
 
 # Sellable players — total
-_dml = config.DEMAND_MAPPED_LEAGUES
+_dml = DEMAND_MAPPED_LEAGUES
 _dml_ph = ",".join("?" * len(_dml))
 
 n_sellable_total = con.execute("""
@@ -88,10 +91,14 @@ n_in_universe = con.execute("""
 """).fetchone()[0]
 n_unrated = max(0, n_in_universe - n_rated)
 
-# Buyer requests — total across mapped leagues
+# Demand signals (maps-export layer, W + M) — total across mapped leagues
 n_buyer_requests = con.execute(f"""
     SELECT COUNT(*) FROM map_club_requests WHERE league IN ({_dml_ph})
 """, _dml).fetchone()[0]
+_demand_src_codes = [
+    ui._dp.source_code(o, s) for o, s in con.execute(
+        f"SELECT source_origin, source FROM map_club_requests WHERE league IN ({_dml_ph})", _dml)
+]
 n_buying_clubs = con.execute(f"""
     SELECT COUNT(DISTINCT club_id) FROM map_club_requests WHERE league IN ({_dml_ph})
 """, _dml).fetchone()[0]
@@ -146,9 +153,10 @@ tiles = [
           subline=sellable_subline,
           title="Players passing the sellable filters across all 19 leagues. "
                 "Excludes Kill List. SciSports coverage shown on the subline."),
-    _tile("Buyer requests", f"{n_buyer_requests:,}",
-          subline=f"from {n_buying_clubs} buying clubs",
-          title="Buyer requests across the 10 demand-mapped leagues."),
+    _tile("Demand signals", f"{n_buyer_requests:,}",
+          subline=f"{ui.demand_count_line(_demand_src_codes)} · {n_buying_clubs} clubs",
+          title=f"Maps-export demand signals across the {n_demand_mapped} demand-mapped "
+                f"leagues. W = workbook (curated), M = maps inference (not validated)."),
     _tile("Total matches", f"{n_total_matches:,}",
           subline=(f'<span style="color:#15803d; font-weight:600;">{n_on_level}</span> ON LEVEL · '
                    f'<span style="color:#b45309; font-weight:600;">{n_upside}</span> UPSIDE · '
@@ -163,7 +171,7 @@ st.markdown(f'<div class="rvc-tile-row">{"".join(tiles)}</div>', unsafe_allow_ht
 
 # ─── Heat map — Position × Demand-mapped League ──────────────────────────────
 HEAT_POSITIONS = ["GK", "CB", "RB", "LB", "DM", "CM", "AM", "LW", "RW", "ST_CF"]
-HEAT_LEAGUES   = list(config.DEMAND_MAPPED_LEAGUES)
+HEAT_LEAGUES   = list(DEMAND_MAPPED_LEAGUES)
 
 # Phase C (2026-06-09): supply uses Market View cohort definition consistent
 # with scripts/22_match_engine.py tension calc:
@@ -255,7 +263,7 @@ _heat_icon_block = (
     'vertical-align:middle; margin-right:6px;"></span><strong>No signal</strong> — supply or demand is zero</div>'
     '<p style="margin:10px 0 0 0; color:#6b7280; font-size:0.8rem;">'
     'Supply = Market View cohort (sellability ≥ 35, has CA, not IFA). '
-    'Demand = raw count from UNION of explicit + inferred buyer requests. '
+    'Demand = raw count of demand signals: W workbook + M maps inference + Y matcher inference. '
     'Hover any cell for the underlying counts and ratio.</p>'
     '</div></details>'
 )
@@ -342,7 +350,7 @@ for pos in HEAT_POSITIONS:
         ratio_str = f"{ratio:.2f}" if ratio is not None else "—"
         tooltip = (f"{POS_SHORT[pos]} × {lg_short}\n"
                    f"Supply: {supply} player{'s' if supply != 1 else ''}\n"
-                   f"Demand: {demand} buyer request{'s' if demand != 1 else ''}\n"
+                   f"Demand: {demand} demand signal{'s' if demand != 1 else ''}\n"
                    f"Ratio: {ratio_str}\n"
                    f"State: {state}")
         if scaled is None:
@@ -370,7 +378,7 @@ for pos in HEAT_POSITIONS:
     g_ratio_str = f"{g_ratio:.2f}" if g_ratio is not None else "—"
     g_tooltip = (f"{POS_SHORT[pos]} — All 19 leagues (engine global)\n"
                  f"Supply: {g_supply} player{'s' if g_supply != 1 else ''}\n"
-                 f"Demand: {g_demand} buyer request{'s' if g_demand != 1 else ''}\n"
+                 f"Demand: {g_demand} demand signal{'s' if g_demand != 1 else ''}\n"
                  f"Ratio: {g_ratio_str}\n"
                  f"State: {g_state}")
     if g_scaled is None:
@@ -525,7 +533,7 @@ with col_pos:
     st.markdown("### Position market states")
     # Tension per position — uses Market View cohort definition for supply
     # (matches scripts/22_match_engine.py tension calc + the heat map above).
-    # Demand = raw UNION of explicit + inferred buyer requests across all
+    # Demand = raw UNION of W/M (map_club_requests) + Y (inferred) demand signals across all
     # leagues (the engine's macro market state).
     _pos_supply_all = dict(con.execute("""
         SELECT pu.position_bucket, COUNT(*)
@@ -646,8 +654,7 @@ st.markdown(
     f'Snapshot frozen <strong>{snapshot.isoformat()}</strong>. '
     f'SciSports talent layer covers <strong>{n_rated}/{n_in_universe}</strong> '
     f'sellable cohort players. Demand mapped across <strong>{n_demand_mapped}</strong> '
-    f'leagues. Stage 2 will extend demand coverage to second-tier and '
-    f'rest-of-world leagues.'
+    f'leagues (derived from the Market Movement Maps export).'
     f'</div>',
     unsafe_allow_html=True,
 )

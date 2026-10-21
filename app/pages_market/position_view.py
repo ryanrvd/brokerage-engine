@@ -6,7 +6,7 @@ card → drilled-in state.
 
 Detail state (?bucket=XX): full per-position market view — KPI tiles, a
 plain-English commentary panel, two mini supply-vs-demand bar charts, then
-three tables (available players, clubs looking, all matches at the position).
+three tables (available players, clubs with a demand signal, all matches at the position).
 Kill List players appear in the tables with a pale red tint + ⊘ Excluded
 badge, but are excluded from KPI tile picks and commentary named-player
 references (those are operational signals; non-actionable picks would mislead
@@ -23,15 +23,18 @@ import db
 import labels
 import components as ui
 
-# config.DEMAND_MAPPED_LEAGUES — single source of truth for which leagues we
-# trust as demand sources (the 10 manually mapped via Google Sheets).
+# DEMAND_MAPPED_LEAGUES — single source of truth for which leagues we
+# trust as demand sources — derived from map_club_requests (db.demand_mapped_leagues).
 import sys as _sys
 from pathlib import Path as _Path
 _sys.path.insert(0, str(_Path(__file__).resolve().parent.parent.parent))
 import config
 
+# Derived from map_club_requests (was the hard-coded config.DEMAND_MAPPED_LEAGUES).
+DEMAND_MAPPED_LEAGUES = db.demand_mapped_leagues()
+
 # SQL placeholders for the "league IN (...)" clauses.
-_DML_PLACEHOLDERS = ",".join("?" * len(config.DEMAND_MAPPED_LEAGUES))
+_DML_PLACEHOLDERS = ",".join("?" * len(DEMAND_MAPPED_LEAGUES))
 
 st.set_page_config(
     page_title="Brokerage Engine",
@@ -163,8 +166,8 @@ def _overview_data(engine_key: str) -> dict[str, dict]:
                 SELECT club_id FROM inferred_club_requests
                 WHERE position_bucket = ? AND league IN ({_DML_PLACEHOLDERS})
             )
-        """, (b, *config.DEMAND_MAPPED_LEAGUES,
-              b, *config.DEMAND_MAPPED_LEAGUES)).fetchone()[0]
+        """, (b, *DEMAND_MAPPED_LEAGUES,
+              b, *DEMAND_MAPPED_LEAGUES)).fetchone()[0]
 
         # Raw request count (UNION ALL — duplicates kept, all 19 leagues).
         # 2026-06-09: this is the new headline ratio denominator-source so
@@ -201,7 +204,7 @@ if bucket is None:
         <div class="rvc-page-title">
             <h1>Position markets</h1>
             <div class="rvc-page-subtitle">
-                Pick a position to see who's available, who's looking, and where
+                Pick a position to see who's available, where the demand signals are, and where
                 the arbitrage corridors are.
             </div>
         </div>
@@ -297,7 +300,7 @@ if bucket is None:
             f'  </span>'
             f'  <div class="rvc-pos-card-title">{POSITION_NAMES[b]}</div>'
             f'  <div class="rvc-pos-card-stat"><strong>{d["n_players"]}</strong> available</div>'
-            f'  <div class="rvc-pos-card-stat"><strong>{d["n_clubs"]}</strong> clubs looking</div>'
+            f'  <div class="rvc-pos-card-stat"><strong>{d["n_clubs"]}</strong> clubs with demand</div>'
             f'  <div class="rvc-pos-card-tension" style="color:{tension_colour};">{tension_lbl}</div>'
             f'  <div class="rvc-pos-card-ratio">→ {ratio_str}</div>'
             f'</a>'
@@ -342,12 +345,12 @@ data = db.get_position(bucket, sort_col=db.active_match_score_col(), engine_key=
 players_all = data["players"].copy()    # sellable cohort at this bucket
 matches_all = data["matches"]           # every match row at this bucket
 
-# Restrict matches to buyers in the 10 demand-mapped leagues only. Same
+# Restrict matches to buyers in the demand-mapped leagues only. Same
 # principle as the demand counts above — we don't trust demand signal from
 # leagues outside that set, so matches with non-mapped buyers shouldn't
 # appear here either.
 matches_all = matches_all[
-    matches_all["buyer_league_id"].isin(config.DEMAND_MAPPED_LEAGUES)
+    matches_all["buyer_league_id"].isin(DEMAND_MAPPED_LEAGUES)
 ].reset_index(drop=True)
 
 excluded_ids = db.get_excluded_ids()
@@ -432,9 +435,8 @@ matches_actionable = matches_view[~matches_view["player_id"].isin(excluded_ids)]
 n_avail_actionable = len(players_actionable)
 n_avail_universe = len(players_view)
 
-# Distinct clubs looking at this position — restricted to the 10 demand-
-# mapped leagues only (MLS/Saudi/Greek/Scottish/Danish/Turkish + non-FRA
-# second tiers are excluded since our demand-side coverage stops there).
+# Distinct clubs with demand at this position — restricted to the
+# demand-mapped leagues (derived from map_club_requests).
 n_clubs = con.execute(f"""
     SELECT COUNT(DISTINCT club_id) FROM (
         SELECT club_id FROM map_club_requests
@@ -443,13 +445,16 @@ n_clubs = con.execute(f"""
         SELECT club_id FROM inferred_club_requests
         WHERE position_bucket = ? AND league IN ({_DML_PLACEHOLDERS})
     )
-""", (bucket, *config.DEMAND_MAPPED_LEAGUES,
-      bucket, *config.DEMAND_MAPPED_LEAGUES)).fetchone()[0]
+""", (bucket, *DEMAND_MAPPED_LEAGUES,
+      bucket, *DEMAND_MAPPED_LEAGUES)).fetchone()[0]
 
 # Top match — Kill-List-excluded, post-filter
+# .loc (labels, not positions) + dropna: matches_actionable is a filtered view
+# with gaps in its index, and Market-only rows carry NULL match_score.
 top_match_row = None
-if len(matches_actionable):
-    top_match_row = matches_actionable.iloc[matches_actionable["match_score"].idxmax()]
+_top_scores = matches_actionable["match_score"].dropna()
+if len(_top_scores):
+    top_match_row = matches_actionable.loc[_top_scores.idxmax()]
 
 # ─── KPI tiles ───────────────────────────────────────────────────────────────
 tension_lbl, tension_colour, tension_opportunity = _tension_label(n_clubs, n_avail_actionable)
@@ -490,9 +495,10 @@ tiles = [
           title="Players at this position passing the sellable filters. Excludes "
                 "Kill List players; subline shows the unfiltered universe count "
                 "when the Kill List removes anyone."),
-    _tile("Clubs looking", str(n_clubs),
-          title="Distinct buyer clubs with a stated need at this position "
-                "(explicit demand + inferred squad-thinness)."),
+    _tile("Clubs with demand", str(n_clubs),
+          title="Distinct clubs with a demand signal at this position: W workbook, "
+                "M maps inference, Y matcher squad-thinness inference. M and Y are "
+                "not validated requests."),
     _tile("Market tension", ratio_str,
           subline=(
               f'<span style="color:{tension_colour}; font-weight:700;">{tension_lbl}</span>'
@@ -500,9 +506,8 @@ tiles = [
               f'margin-top:4px; line-height:1.35; white-space:normal;">'
               f'{tension_opportunity}</div>'
           ),
-          title="Clubs looking ÷ available players. Demand restricted to the "
-                "10 mapped leagues (England 1-2, Spain 1, Italy 1, France 1-2, "
-                "Germany 1, Portugal 1, Netherlands 1, Belgium 1)."),
+          title=f"Clubs with demand ÷ available players. Demand restricted to the "
+                f"{len(DEMAND_MAPPED_LEAGUES)} leagues the maps export covers."),
     _tile("Top match", top_match_value,
           subline=top_match_subline,
           title="Highest match score at this position (Kill List excluded)."),
@@ -525,7 +530,7 @@ def _league_count(df: pd.DataFrame, col: str) -> dict[str, int]:
 
 def _build_commentary() -> str:
     """Compose the 3-5 sentence market narrative. Named players are Kill-List-
-    excluded. Demand counts restricted to the 10 mapped leagues. Uses league
+    excluded. Demand counts restricted to the demand-mapped leagues. Uses league
     display names throughout. Finishes with the broker-operational implication
     so the reader doesn't have to interpret a tension ratio in isolation."""
     avail_actionable = n_avail_actionable
@@ -558,11 +563,11 @@ def _build_commentary() -> str:
         s1 = (f"{position_name} — {label_inline}."
               + (f" {opportunity_sentence}" if opportunity_sentence else "")
               + f" {avail_actionable} players available{excl_clause}, "
-                f"{clubs_total} clubs looking across our demand-mapped leagues "
+                f"{clubs_total} clubs with a demand signal across our demand-mapped leagues "
                 f"— roughly {ratio:.1f} buyers per player.")
     else:
         s1 = (f"{position_name} has no available players right now — "
-              f"{clubs_total} clubs in our demand-mapped leagues are looking, "
+              f"{clubs_total} clubs in our demand-mapped leagues show a demand signal, "
               f"but the supply side is empty.")
 
     # Sentence 2 — demand concentration (unique clubs by league, mapped-only)
@@ -577,8 +582,8 @@ def _build_commentary() -> str:
         )
         GROUP BY league
         ORDER BY n_clubs DESC
-    """, (bucket, *config.DEMAND_MAPPED_LEAGUES,
-          bucket, *config.DEMAND_MAPPED_LEAGUES)).fetchall()
+    """, (bucket, *DEMAND_MAPPED_LEAGUES,
+          bucket, *DEMAND_MAPPED_LEAGUES)).fetchall()
     demand_top = [(labels.league_name(lg), n) for lg, n in demand_pairs[:3] if lg]
     if demand_top:
         demand_str = ", ".join([f"{name} ({n})" for name, n in demand_top])
@@ -695,7 +700,7 @@ _supply_extra = len(_supply_groups) - len(_supply_top6)
 if _supply_extra > 0:
     _supply_top6.append((f"+ {_supply_extra} more leagues", 0))
 
-# Demand (distinct clubs per league) — restricted to the 10 demand-mapped leagues
+# Demand (distinct clubs per league) — restricted to the demand-mapped leagues
 _demand_groups = con.execute(f"""
     SELECT league, COUNT(DISTINCT club_id) AS n_clubs FROM (
         SELECT league, club_id FROM map_club_requests
@@ -705,8 +710,8 @@ _demand_groups = con.execute(f"""
         WHERE position_bucket = ? AND league IN ({_DML_PLACEHOLDERS})
     )
     GROUP BY league ORDER BY n_clubs DESC
-""", (bucket, *config.DEMAND_MAPPED_LEAGUES,
-      bucket, *config.DEMAND_MAPPED_LEAGUES)).fetchall()
+""", (bucket, *DEMAND_MAPPED_LEAGUES,
+      bucket, *DEMAND_MAPPED_LEAGUES)).fetchall()
 _demand_top6 = [(labels.league_name(lg), int(n)) for lg, n in _demand_groups[:6] if lg]
 _demand_extra = max(0, len(_demand_groups) - len(_demand_top6))
 if _demand_extra > 0:
@@ -734,7 +739,7 @@ st.markdown(
 st.markdown(
     '<div class="rvc-charts-row">'
     + _render_bar_chart("Where the supply is", _supply_top6, "players available per league")
-    + _render_bar_chart("Where the demand is", _demand_top6, "distinct clubs looking per league")
+    + _render_bar_chart("Where the demand is", _demand_top6, "distinct clubs with demand per league")
     + '</div>',
     unsafe_allow_html=True,
 )
@@ -891,25 +896,26 @@ else:
     ui.render_html_table(styled, max_height_px=min(620, 60 + 38 * len(show_df)))
 
 # ─── Clubs looking table ─────────────────────────────────────────────────────
-# Pulls explicit demand only (map_club_requests) AND restricts to the 10
-# demand-mapped leagues, so the table never surfaces buyer demand we don't
-# trust as actionable signal.
+# Pulls the maps-export demand layer (map_club_requests — W workbook + M maps
+# inference) restricted to the demand-mapped leagues. Each row carries its
+# provenance badge so a maps-inferred signal never reads as a stated request.
 clubs_rows = con.execute(f"""
-    SELECT club_id, club_name, league, preferred_side, validated,
+    SELECT club_id, club_name, league, preferred_side, source, source_origin,
            max_transfer_fee_eur, max_wage_pw_eur, linked_shortlisted_player
     FROM map_club_requests
     WHERE position_bucket = ? AND league IN ({_DML_PLACEHOLDERS})
     ORDER BY max_transfer_fee_eur DESC NULLS LAST
-""", (bucket, *config.DEMAND_MAPPED_LEAGUES)).fetchall()
+""", (bucket, *DEMAND_MAPPED_LEAGUES)).fetchall()
 
-st.markdown(f"### Clubs looking for a {position_name_lower} ({len(clubs_rows)})")
+st.markdown(f"### Clubs with a {position_name_lower} demand signal ({len(clubs_rows)})")
 if not clubs_rows:
-    st.info(f"No stated buyer demand for {position_name_lower} in our coverage.")
+    st.info(f"No demand signal for {position_name_lower} in our coverage.")
 else:
     clubs_df = pd.DataFrame(clubs_rows, columns=[
-        "club_id", "club_name", "league", "preferred_side", "validated",
+        "club_id", "club_name", "league", "preferred_side", "source", "source_origin",
         "max_transfer_fee_eur", "max_wage_pw_eur", "linked_shortlisted_player",
     ])
+    clubs_df["src_badge"] = clubs_df.apply(ui.demand_source_badge_for_row, axis=1)
     clubs_df["club_display"] = clubs_df.apply(
         lambda r: labels.club_display_name(
             int(r["club_id"]) if pd.notna(r["club_id"]) else None, r["club_name"]),
@@ -930,13 +936,13 @@ else:
         clubs_df = clubs_df[clubs_df["league"].isin(sel_leagues)]
 
     clubs_show = clubs_df[[
-        "Club_html", "league_display", "preferred_side", "validated",
+        "src_badge", "Club_html", "league_display", "preferred_side",
         "budget_str", "wage_str", "shortlist_str",
     ]].rename(columns={
+        "src_badge":       "Src",
         "Club_html":       "Club",
         "league_display":  "League",
         "preferred_side":  "Side",
-        "validated":       "Validated",
         "budget_str":      "Buyer Budget",
         "wage_str":        "Wage Cap",
         "shortlist_str":   "Confirmed players of interest",
@@ -981,8 +987,9 @@ else:
     )
     mdf["Player_html"] = mdf.apply(_player_cell, axis=1)
     mdf["Buyer_html"] = mdf.apply(
-        lambda r: ui.club_link(int(r["buyer_club_id"]) if pd.notna(r.get("buyer_club_id")) else None,
-                                str(r["buyer_display"])),
+        lambda r: ui.demand_source_badge_for_row(r) + " " + ui.club_link(
+            int(r["buyer_club_id"]) if pd.notna(r.get("buyer_club_id")) else None,
+            str(r["buyer_display"])),
         axis=1,
     )
     mdf = mdf.sort_values(db.active_match_score_col(), ascending=False, kind="stable").reset_index(drop=True)

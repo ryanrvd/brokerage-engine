@@ -5,7 +5,8 @@ commentary → supply/demand bar charts → tables), but the lens is league
 not position. Built around two structural facts of our data:
 
   1. Supply universe spans 19 leagues (all of dcaribou + second-tier scrape).
-  2. Demand coverage stops at the 10 mapped leagues (config.DEMAND_MAPPED_LEAGUES).
+  2. Demand coverage = the leagues the maps export carries (DEMAND_MAPPED_LEAGUES,
+     derived from map_club_requests — 18/19 today, no SA1).
 
 The page surfaces that asymmetry explicitly — non-mapped leagues get a
 "supply only" badge in the header, an em-dash placeholder on the demand KPI
@@ -22,11 +23,14 @@ import db
 import labels
 import components as ui
 
-# config.DEMAND_MAPPED_LEAGUES — same filter applied across the app.
+# DEMAND_MAPPED_LEAGUES — same filter applied across the app.
 import sys as _sys
 from pathlib import Path as _Path
 _sys.path.insert(0, str(_Path(__file__).resolve().parent.parent.parent))
 import config
+
+# Derived from map_club_requests (was the hard-coded config.DEMAND_MAPPED_LEAGUES).
+DEMAND_MAPPED_LEAGUES = db.demand_mapped_leagues()
 
 st.set_page_config(
     page_title="Brokerage Engine",
@@ -73,7 +77,7 @@ st.query_params["league"] = lg  # shareable link
 
 league_display = labels.league_name(lg)
 country_name, country_flag = labels.country_for_league(lg)
-is_demand_mapped = lg in config.DEMAND_MAPPED_LEAGUES
+is_demand_mapped = lg in DEMAND_MAPPED_LEAGUES
 
 # ─── Header — league title + demand-mapped badge ─────────────────────────────
 st.markdown(f"## {league_display} market")
@@ -102,7 +106,7 @@ st.markdown(
 # ─── Pull data ───────────────────────────────────────────────────────────────
 data = db.get_league(lg, sort_col=db.active_match_score_col(), engine_key=db.active_engine())
 sellers_all = data["sellers"].copy()        # players whose parent_club is in this league
-requests_all = data["requests"].copy()      # buyer requests from clubs in this league
+requests_all = data["requests"].copy()      # demand signals (W/M/Y) from clubs in this league
 matches_all = data["matches"].copy()        # any match where seller OR buyer is in this league
 
 excluded_ids = db.get_excluded_ids()
@@ -113,7 +117,7 @@ con = db.get_connection()
 # Position View). Sell-side rows from non-mapped leagues stay — the
 # selected league is what we're scoping by.
 matches_all = matches_all[
-    matches_all["buyer_league_id"].isin(config.DEMAND_MAPPED_LEAGUES)
+    matches_all["buyer_league_id"].isin(DEMAND_MAPPED_LEAGUES)
 ].reset_index(drop=True)
 
 
@@ -221,9 +225,12 @@ sellable_subline = (
     if n_sellable_universe != n_sellable_actionable else ""
 )
 buyer_requests_value = str(n_buyer_requests) if is_demand_mapped else "—"
-buyer_requests_subline = "" if is_demand_mapped else (
-    '<span style="color:#6b7280;">Demand not mapped</span>'
-)
+if not is_demand_mapped:
+    buyer_requests_subline = '<span style="color:#6b7280;">Demand not mapped</span>'
+elif len(requests_all):
+    buyer_requests_subline = ui.demand_count_line(requests_all["src"])
+else:
+    buyer_requests_subline = ""
 
 tiles = [
     _tile("Sellable players", str(n_sellable_actionable),
@@ -231,11 +238,11 @@ tiles = [
           title="Players whose parent club is in this league and who pass the "
                 "sellable filters. Excludes Kill List; subline shows the "
                 "unfiltered count when Kill List removes anyone."),
-    _tile("Buyer requests", buyer_requests_value,
+    _tile("Demand signals", buyer_requests_value,
           subline=buyer_requests_subline,
-          title="Buyer requests originating from clubs in this league. "
-                "Coverage limited to the 10 demand-mapped leagues; non-mapped "
-                "leagues read as '—'."),
+          title="Demand signals from clubs in this league — W workbook, M maps "
+                "inference, Y matcher squad-thinness inference (M and Y are not "
+                "validated). Leagues the maps export doesn't cover read as '—'."),
     _tile("Top match", top_match_value,
           subline=top_match_subline,
           title="Highest match score where a player from this league is being sold. "
@@ -248,7 +255,7 @@ st.markdown(f'<div class="rvc-tile-row">{"".join(tiles)}</div>', unsafe_allow_ht
 def _build_commentary() -> str:
     """One-paragraph plain-English market summary for the league. Names
     real players and clubs (Kill List excluded). For non-mapped leagues,
-    skips buyer-side content and surfaces the Stage 2 backlog note."""
+    skips buyer-side content and notes the export carries no demand for it."""
 
     # Supply-side position concentration (top 2 buckets from sellable cohort)
     if len(sellers_actionable):
@@ -309,8 +316,8 @@ def _build_commentary() -> str:
         if strongest:
             parts.append("Strongest available: " + " and ".join(strongest) + ".")
         parts.append(
-            "Sell-side coverage only — demand mapping for this league is on the "
-            "Stage 2 backlog."
+            "Sell-side coverage only — the maps export carries no demand "
+            "for this league."
         )
         return " ".join(parts)
 
@@ -318,7 +325,7 @@ def _build_commentary() -> str:
     parts = []
     parts.append(
         f"{league_display}: {n_sellable_actionable} sellable players against "
-        f"{n_buyer_requests} buyer requests from {league_display} clubs."
+        f"{n_buyer_requests} demand signals from {league_display} clubs."
     )
 
     # Sentence 2 — supply + demand position concentration
@@ -328,7 +335,7 @@ def _build_commentary() -> str:
         s2_bits.append(f"Supply concentrates at {sup_str}")
     if demand_top:
         dem_str = ", ".join([f"{name} ({n})" for name, n in demand_top])
-        s2_bits.append(f"buyer requests skew toward {dem_str}")
+        s2_bits.append(f"demand signals skew toward {dem_str}")
     if s2_bits:
         parts.append("; ".join(s2_bits) + ".")
 
@@ -434,8 +441,7 @@ if is_demand_mapped and len(requests_all):
         _demand_top6.append((f"+ {_demand_extra} more positions", 0))
 elif not is_demand_mapped:
     demand_empty_msg = (
-        "Demand for this league not mapped in current build. Stage 2 will extend "
-        "market maps to second-tier and rest-of-world leagues."
+        "The Market Movement Maps export carries no demand for this league."
     )
 
 st.markdown(
@@ -446,7 +452,7 @@ st.markdown(
     )
     + _render_bar_chart(
         "Where the demand sits", _demand_top6,
-        "buyer requests per position",
+        "demand signals per position",
         empty_message=demand_empty_msg,
     )
     + '</div>',
@@ -675,31 +681,30 @@ else:
             ui.render_html_table(styled_rest, max_height_px=min(640, 60 + 38 * len(rest_view)))
 
 
-# ─── Buyer requests from this league — redesigned ───────────────────────────
+# ─── Demand signals from this league — redesigned ───────────────────────────
 # Replaces the old flat 123-row table with a grouped, collapsible view per
 # buying club. Adds match-highlighting on interest names that appear in our
 # sellable cohort (the high-signal brokerage opportunities) and a
 # top-of-section callout summarising matched count.
 st.markdown(
-    f"### Buyer requests from clubs in {league_display} {ui.level_fit_info_icon()}",
+    f"### Demand signals from clubs in {league_display} {ui.level_fit_info_icon()}",
     unsafe_allow_html=True,
 )
 if not is_demand_mapped:
     st.info(
-        "Demand for this league not mapped in current build. Stage 2 will extend "
-        "market maps to second-tier and rest-of-world leagues."
+        "The Market Movement Maps export carries no demand for this league."
     )
 elif not len(requests_all):
-    st.info(f"No buyer requests recorded from {league_display} clubs.")
+    st.info(f"No demand signals recorded from {league_display} clubs.")
 else:
-    # Pull club_id + linked_shortlisted_player for explicit rows.
+    # Pull club_id + linked_shortlisted_player + provenance for maps-export rows.
     raw_rows = con.execute("""
         SELECT club_id, club_name, position_bucket, preferred_side,
-               max_transfer_fee_eur, linked_shortlisted_player
+               max_transfer_fee_eur, linked_shortlisted_player, source_origin, source
         FROM map_club_requests WHERE league = ?
     """, (lg,)).fetchall()
     if not raw_rows:
-        st.info(f"No explicit buyer requests recorded from {league_display} clubs.")
+        st.info(f"No maps-export demand signals recorded from {league_display} clubs.")
     else:
         # Build the sellable-cohort match index (cached lookup of normalised
         # player names + surnames). Used for highlighting which interest
@@ -730,7 +735,7 @@ else:
         clubs_agg: dict[int, dict] = {}
         all_matched_pairs: list[dict] = []
 
-        for cid, cname, pos, side, budget, linked in raw_rows:
+        for cid, cname, pos, side, budget, linked, origin, source in raw_rows:
             try:
                 cid_int = int(cid)
             except (TypeError, ValueError):
@@ -764,6 +769,7 @@ else:
             entry["positions"].append({
                 "position":  pos,
                 "side":      side,
+                "src":       ui._dp.source_code(origin, source),
                 "interests": interests,
             })
         # Distinct positions per club (one club can request the same position
@@ -779,7 +785,7 @@ else:
             f'border-radius:8px; padding:12px 16px; margin:8px 0 14px 0; '
             f'color:#1e3a8a; font-size:0.95rem;">'
             f'Of <strong>{total_interests}</strong> player interests across '
-            f'{league_display} buyer requests, '
+            f'{league_display} demand signals, '
             f'<strong>{n_matched}</strong> match players in our sellable cohort.'
             f'</div>',
             unsafe_allow_html=True,
@@ -885,7 +891,9 @@ else:
                 by_pos: dict[str, dict] = {}
                 for p in club["positions"]:
                     pos_key = p["position"]
-                    entry = by_pos.setdefault(pos_key, {"sides": [], "interests_seen": set(), "interests_ordered": []})
+                    entry = by_pos.setdefault(pos_key, {"sides": [], "srcs": [], "interests_seen": set(), "interests_ordered": []})
+                    if p["src"] not in entry["srcs"]:
+                        entry["srcs"].append(p["src"])
                     side_val = (p["side"] or "").strip()
                     if side_val and side_val not in entry["sides"]:
                         entry["sides"].append(side_val)
@@ -902,7 +910,8 @@ else:
                     n_targets = len(body["interests_ordered"])
                     st.markdown(
                         f'<div style="margin:8px 0 4px 0; font-size:0.95rem; '
-                        f'color:#111827;"><strong>{pos_disp}</strong> '
+                        f'color:#111827;">{" ".join(ui.demand_source_badge(c) for c in body["srcs"])} '
+                        f'<strong>{pos_disp}</strong> '
                         f'<span style="color:#6b7280; font-weight:400;">'
                         f'({sides_str} footed, {n_targets} '
                         f'target{"s" if n_targets != 1 else ""})</span>:</div>',

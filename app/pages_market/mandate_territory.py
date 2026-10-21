@@ -7,8 +7,8 @@ Two focused sections:
      name links to Player View.
 
   2. Promoted-Buyer Panel (bottom): one card per recently-promoted club
-     showing their stated buyer requests (from map_club_requests), inferred
-     demand (from script 21), and top relegated→promoted pathway candidates
+     showing their demand signals with W/M/Y provenance (map_club_requests →
+     W workbook / M maps inference; script 21 → Y matcher inference), and top relegated→promoted pathway candidates
      (matches where parent_club is relegated AND buyer is this promoted club).
 
 The full match list across the wider mandate-relevant cohort stays on
@@ -159,7 +159,8 @@ st.markdown("---")
 st.markdown("### 🔺 Promoted-Buyer Panel — strategic buyers entering top-flight budgets")
 st.caption(
     "Promoted clubs are *strengthening*, not selling. They appear here on the "
-    "buyer side: stated requests, inferred squad gaps, and the highest-scoring "
+    "buyer side: demand signals (W workbook · M maps inference · Y matcher "
+    "inference — M and Y are not validated), and the highest-scoring "
     "candidates whose parent club is recently-relegated (the Burnley → Coventry "
     "style pathway)."
 )
@@ -175,22 +176,22 @@ prom_clubs = con.execute("""
 if not prom_clubs:
     st.info("No clubs flagged recently_promoted.")
 else:
-    # Pull stated requests, inferred demand, and pathway candidates per club
+    # Pull maps-export demand (W/M), matcher inference (Y), and pathway candidates per club
     for c in prom_clubs:
         cid = c["club_id"]
         c_display = labels.club_display_name(cid, c["name"])
         c_href = ui.with_auth(f"/club_view?club_id={cid}")
 
-        # Stated requests
+        # Maps-export demand signals (W workbook / M maps inference)
         reqs = pd.read_sql_query("""
             SELECT position_bucket, preferred_side,
-                   max_transfer_fee_eur, source, validated
+                   max_transfer_fee_eur, source, validated, source_origin
             FROM map_club_requests
             WHERE cast(club_id AS TEXT) = cast(? AS TEXT)
             ORDER BY max_transfer_fee_eur DESC NULLS LAST
         """, con, params=(cid,))
 
-        # Inferred demand
+        # Matcher inference (Y)
         inferred = pd.read_sql_query("""
             SELECT position_bucket, max_transfer_fee_eur
             FROM inferred_club_requests
@@ -214,6 +215,10 @@ else:
 
         n_req = len(reqs)
         n_inf = len(inferred)
+        src_line = ui.demand_count_line(
+            [ui._dp.source_code(o, s) for o, s in zip(reqs["source_origin"], reqs["source"])]
+            + [ui._dp.YATIN_INFERENCE] * n_inf
+        )
         top_budget = float(reqs["max_transfer_fee_eur"].max()) if n_req and reqs["max_transfer_fee_eur"].notna().any() else None
         budget_str = ui.fmt_money(top_budget) if top_budget is not None else "—"
         positions_needed = sorted(set(reqs["position_bucket"].dropna().tolist()
@@ -235,7 +240,7 @@ else:
             f"      <span style='color:#6B7280; font-size:0.82rem;'>{labels.league_name(c['league_id'])}</span>"
             f"    </div>"
             f"    <div style='font-size:0.82rem; color:#374151;'>"
-            f"      <b>{n_req}</b> stated · <b>{n_inf}</b> inferred · top budget <b>{budget_str}</b>"
+            f"      {src_line} · top budget <b>{budget_str}</b>"
             f"    </div>"
             f"  </div>"
             f"  <div style='margin-top:8px; font-size:0.86rem; color:#374151;'>"

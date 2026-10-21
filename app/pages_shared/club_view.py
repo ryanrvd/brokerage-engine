@@ -11,7 +11,7 @@ Layout (top → bottom):
        Sellable Assets table (full squad, sortable, toggle for ≥ threshold only)
        + Imminent Free Agents panel (rendered only when any exist)
   5. Buyer-side section (hidden if no buyer demand):
-       Stated Requests table + Matches as Buyer table
+       Demand Signals table (W/M/Y source badge per row) + Matches as Buyer table
   6. Sections never render placeholders — empty sections are removed entirely
 """
 
@@ -25,11 +25,14 @@ import db
 import labels
 import components as ui
 
-# config.DEMAND_MAPPED_LEAGUES — demand-side restriction applied below.
+# DEMAND_MAPPED_LEAGUES — demand-side restriction applied below.
 import sys as _sys
 from pathlib import Path as _Path
 _sys.path.insert(0, str(_Path(__file__).resolve().parent.parent.parent))
 import config
+
+# Derived from map_club_requests (was the hard-coded config.DEMAND_MAPPED_LEAGUES).
+DEMAND_MAPPED_LEAGUES = db.demand_mapped_leagues()
 
 st.set_page_config(page_title="Brokerage Engine", page_icon="🏟️", layout="wide")
 ui.inject_css()
@@ -119,7 +122,7 @@ if not raw_cid:
         p_max = int(df_all["pressure"].max()) + 1 if len(df_all) else 100
         sel_p = st.slider("Selling pressure", p_min, p_max, (p_min, p_max), 1)
         has_sellable = st.checkbox("Has sellable players")
-        has_requests = st.checkbox("Has buyer requests")
+        has_requests = st.checkbox("Has demand signals")
         parachute = st.checkbox("On parachute payments")
         mgr_change = st.checkbox("Manager change detected")
 
@@ -180,7 +183,7 @@ if not raw_cid:
         "League":           "league",
         "Selling Pressure": "pressure",
         "Sellable":         "sellable",
-        "Requests":         "requests",
+        "Demand Signals":   "requests",
         "Total Matches":    "matches",
     }
     _CV_KEY_TO_COL = {
@@ -211,7 +214,7 @@ if not raw_cid:
         "league_display":    "League",
         "pressure":          "Selling Pressure",
         "sellable_count":    "Sellable",
-        "requests_count":    "Requests",
+        "requests_count":    "Demand Signals",
         "total_matches":     "Total Matches",
     })
     display["Selling Pressure"] = display["Selling Pressure"].apply(ui.fmt_score_capped)
@@ -255,17 +258,17 @@ if data["pressure"] is None:
 pressure  = data["pressure"]
 overview  = data["overview"]
 sellable  = data["sellable_here"]
-# Demand-side restriction: only show stated requests from clubs in mapped
+# Demand-side restriction: only show demand signals from clubs in mapped
 # leagues, and only show matches-as-buyer rows where the buyer (= this club)
 # is in a mapped league. Non-mapped league clubs (Saudi/MLS/Greek/etc.) get
 # an empty section here — consistent with not surfacing untrusted demand on
 # Position View, Targets, All Matches, and Player View.
 requests  = data["requests"]
 if "league" in requests.columns:
-    requests = requests[requests["league"].isin(config.DEMAND_MAPPED_LEAGUES)].reset_index(drop=True)
+    requests = requests[requests["league"].isin(DEMAND_MAPPED_LEAGUES)].reset_index(drop=True)
 buyer_mx  = data["matches_as_buyer"]
 if "buyer_league_id" in buyer_mx.columns:
-    buyer_mx = buyer_mx[buyer_mx["buyer_league_id"].isin(config.DEMAND_MAPPED_LEAGUES)].reset_index(drop=True)
+    buyer_mx = buyer_mx[buyer_mx["buyer_league_id"].isin(DEMAND_MAPPED_LEAGUES)].reset_index(drop=True)
 snapshot  = db.get_snapshot_date()
 
 club_name = labels.club_display_name(cid, pressure["name"])
@@ -736,9 +739,15 @@ if buyer_side_has_content:
             unsafe_allow_html=True,
         )
 
-    # Sub A — Stated Requests
+    # Sub A — Demand signals. Every row carries its provenance badge (W workbook /
+    # M maps inference / Y matcher inference) — today none of it is curated.
     if n_requests > 0:
-        st.markdown(f"## Buyer demand — stated requests ({n_requests})")
+        st.markdown(f"## Buyer demand signals ({n_requests})")
+        st.markdown(
+            f'<div style="font-size:0.85rem; color:#4b5563; margin:-6px 0 8px 0;">'
+            f'{ui.demand_count_line(requests["src"])}</div>',
+            unsafe_allow_html=True,
+        )
         req_df = requests.copy()
         # Get linked_shortlisted_player from map_club_requests for explicit rows
         # (the union view in db.py doesn't include it — pull directly)
@@ -773,8 +782,9 @@ if buyer_side_has_content:
             # without a clear actionable line for the user. Final shape:
             # Position · Side · Buyer Budget · Wage Cap.
             req_show = req_df[[
-                "pos_display", "preferred_side", "budget_str", "wage_str",
+                "src", "pos_display", "preferred_side", "budget_str", "wage_str",
             ]].rename(columns={
+                "src":            "Src",
                 "pos_display":    "Position",
                 "preferred_side": "Side",
                 "budget_str":     "Buyer Budget",
@@ -782,9 +792,16 @@ if buyer_side_has_content:
             })
             # No explicit height — Streamlit auto-fits to the row count, so
             # there's no blank space below the last data row.
-            st.dataframe(req_show, hide_index=True, use_container_width=True)
+            st.dataframe(
+                req_show, hide_index=True, use_container_width=True,
+                column_config={"Src": st.column_config.TextColumn(
+                    "Src", width="small",
+                    help="W = workbook (curated) · M = maps inference · "
+                         "Y = matcher inference (squad thinness). M and Y are not validated.",
+                )},
+            )
         else:
-            st.caption("No stated requests carry buyer-budget, wage, or side data.")
+            st.caption("No demand signals carry buyer-budget, wage, or side data.")
 
     # Sub B — Matches as Buyer (filter Kill List + engine-active score floor)
     if n_buyer_mx > 0:
@@ -828,6 +845,7 @@ if buyer_side_has_content:
             mx_sorted["ca_str"]         = mx_sorted["player_ca"].apply(lambda v: f"{float(v):.0f}" if pd.notna(v) else "—")
             mx_sorted["pa_str"]         = mx_sorted["player_pa"].apply(lambda v: f"{float(v):.0f}" if pd.notna(v) else "—")
             mx_sorted["level_fit_pill"] = mx_sorted["level_fit"].apply(ui.level_fit_pill)
+            mx_sorted["src_badge"]      = mx_sorted.apply(ui.demand_source_badge_for_row, axis=1)
             # Engine-aware Match Score column: render whichever score column
             # the active lens uses (match_score for Brokerage, market_match_score
             # for Market View). Hardcoded match_score rendered NULL for every
@@ -835,12 +853,13 @@ if buyer_side_has_content:
             mx_show = (
                 mx_sorted
                 .assign(rank=lambda d: range(1, len(d) + 1))
-                [["rank", "Player_html", "age", "position_bucket", "bucket_tier",
+                [["rank", "src_badge", "Player_html", "age", "position_bucket", "bucket_tier",
                   "current_club_display", "parent_league_display", "mv_str",
                   "ca_str", "pa_str", "level_fit_pill",
                   _score_col, "sellability_score", "methodology"]]
                 .rename(columns={
                     "rank":                  "#",
+                    "src_badge":             "Src",
                     "Player_html":           "Player",
                     "age":                   "Age",
                     "position_bucket":       "Position",

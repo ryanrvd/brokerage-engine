@@ -91,17 +91,15 @@ SQLITE_FILE = f"{DB_DIR}/yatin.db"
 
 
 # ─── Demand-side league coverage ──────────────────────────────────────────────
-# Demand-side coverage is limited to the 10 leagues we've manually mapped via
-# the Google Sheets workflow (see scripts/16_load_market_maps.py). Demand
-# signals from outside this set — MLS, Saudi Pro League, Süper Lig, Greek
-# Super League, Scottish Premiership, Danish Superliga, and the second-tier
-# leagues other than FRA-2 — are NOT trusted at present.
+# The demand-mapped league set is no longer hard-coded: it is DERIVED from
+# map_club_requests (demand_provenance.derive_demand_mapped_leagues, exposed to
+# the app as db.demand_mapped_leagues()), so coverage follows whatever the
+# Market Movement Maps export carries — 18/19 on the 2026-10-18 export (no SA1).
 #
-# Every demand display surface (Position View counts/charts/commentary,
-# matches tables on Targets / All Matches / Player View / Club View) filters
-# buyers to this set. Supply (player_universe) stays drawn from the full
-# 19-league universe — only demand is restricted.
-DEMAND_MAPPED_LEAGUES: tuple[str, ...] = (
+# SQUAD_SCRAPE_LEAGUES is the SUPPLY-side list scripts/28_ingest_pl_squads.py
+# scrapes TM kader pages for. It was the old 10-league demand set and is kept
+# fixed so supply scraping doesn't silently grow with demand coverage.
+SQUAD_SCRAPE_LEAGUES: tuple[str, ...] = (
     "GB1", "GB2",       # England Premier League + Championship
     "ES1",              # Spain La Liga
     "IT1",              # Italy Serie A

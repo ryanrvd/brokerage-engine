@@ -272,6 +272,20 @@ Inferred demand fires for a (club, bucket) pair when active headcount ≤ a "thi
 
 This lifts buyer-side coverage from 10 demand-mapped leagues to all 19, and from 196 buyer clubs to 370. Clubs without genuine spending power (most of NL/POR/BEL below the top 3-4) self-filter via budget_fit → 0 → match_score → 0 → cut by the score floor.
 
+### Demand provenance badges (W / M / Y)
+
+Every demand row the app and workbooks surface carries a one-letter source badge, defined once in `demand_provenance.py` (shared by `app/components.py`, `app/db.py`, scripts 17 and 23):
+
+| Code | Layer | Where it comes from |
+|---|---|---|
+| **W** | Workbook | `map_club_requests`, `source_origin='workbook'`: curated MMM workbook requests |
+| **M** | Maps inference | `map_club_requests`, `source_origin='inference'`: MMM rule output (arrives tagged `Intel/NO`) |
+| **Y** | Matcher inference | `inferred_club_requests`, `source='Inferred'`: this repo's `scripts/21_infer_demand.py` |
+
+Labels read `M · Maps inference`, `Y · Matcher inference (squad gap)`, `W · Validated agent` and so on. Sheet 5 has W / M / Y count columns. Y is shown for reference and is not in the W+M total, so script 21 runs **before** 17. Sheet 7 leads with a `Src` column. Pages show "n W · n M · n Y" count lines.
+
+**Demand coverage is derived, not hard-coded.** `config.DEMAND_MAPPED_LEAGUES` is gone. The demand-side league set is `demand_provenance.derive_demand_mapped_leagues()`, exposed to the app as `db.demand_mapped_leagues()`: leagues with at least one `map_club_requests` row (18/19 on the 2026-10-18 export, no SA1). The supply-side squad scrape list that script 28 used to borrow from it is now the fixed `config.SQUAD_SCRAPE_LEAGUES` (the original 10 leagues), so supply scraping doesn't grow silently with demand coverage.
+
 **Score floor:** `match_score >= 10` is required for a (player, buyer) pair to enter the `matches` table. Suppresses the long tail of "clears the four filters but tactically marginal" candidates (e.g. Kalimuendo→Arsenal at 5.5 before the multiplier re-cal — now around 13-17, which is acceptable mid-tier).
 
 ### Manual flag pattern (Day 4 — migrated CSV → xlsx)
@@ -544,8 +558,8 @@ After a code change or fresh dcaribou snapshot:
 .venv/bin/python scripts/15_define_demand_schema.py
 .venv/bin/python scripts/16b_load_maps_exports.py        # Phase 6: load maps export interface (was 16_load_market_maps.py)
 .venv/bin/python scripts/19_apply_league_overrides.py    # post-16b: corrects map_* league tags (export carries 25/26 leagues)
+.venv/bin/python scripts/21_infer_demand.py              # matcher-side roster-thinness inference (skips cells already in map_club_requests); before 17 so Sheet 5's Y column is current
 .venv/bin/python scripts/17_export_demand_sheets.py
-.venv/bin/python scripts/21_infer_demand.py              # matcher-side roster-thinness inference (skips cells already in map_club_requests)
 .venv/bin/python scripts/18_manual_flags_excel.py        # refreshes manual_flags.xlsx from updated club_pressure
 .venv/bin/python scripts/reconcile_scisports.py          # refreshes data/scisports_ratings.xlsx against new cohort
 .venv/bin/python scripts/30_refresh_player_metrics.py    # SciSports API — fetches CA/PA for PL squad players (rate-paced, see Day 8 notes)
